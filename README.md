@@ -6,7 +6,7 @@
 
 
 ## Overview
-`netchan` stands as a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by Rob Pike’s initial concept, it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
+`netchan` stands as a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by [Rob Pike’s initial concept](https://github.com/matveynator/netchan-old), it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
 
 ## Key Features
 - **Ease of Use**: The library’s interface is intuitively designed, mirroring the standard channel operations in Go, ensuring a seamless integration for Go developers.
