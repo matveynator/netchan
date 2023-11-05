@@ -14,15 +14,15 @@ import (
 
 // generateSelfSignedCert generates a self-signed certificate and private key.
 func generateSelfSignedCert() ([]byte, []byte, error) {
-	// Генерация ключа ECDSA (вы можете заменить на RSA или другой, если хотите).
+	// Generate an ECDSA key (you could replace with RSA or another type if desired).
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Создание шаблона для самоподписанного сертификата.
+	// Create a template for the self-signed certificate.
 	notBefore := time.Now()
-	notAfter := notBefore.Add(50 * 365 * 24 * time.Hour)
+	notAfter := notBefore.Add(50 * 365 * 24 * time.Hour) // Certificate valid for 50 years
 
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
@@ -42,13 +42,13 @@ func generateSelfSignedCert() ([]byte, []byte, error) {
 		IsCA:                  true,
 	}
 
-	// Создание сертификата.
+	// Create the certificate.
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Кодирование сертификата и ключа в формате PEM.
+	// Encode the certificate and key to PEM format.
 	certPem := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	privBytes, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
@@ -59,7 +59,7 @@ func generateSelfSignedCert() ([]byte, []byte, error) {
 	return certPem, keyPem, nil
 }
 
-// generateTLSConfig создает и возвращает конфигурацию TLS.
+// generateTLSConfig creates and returns a TLS configuration using the generated self-signed certificate.
 func generateTLSConfig() (*tls.Config, error) {
 	certPEM, keyPEM, err := generateSelfSignedCert()
 	if err != nil {

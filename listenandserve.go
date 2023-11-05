@@ -1,47 +1,39 @@
-package netchan // Defines the package name which is netchan
+package netchan
 
-import ( // Imports multiple packages into the program
-	"crypto/tls"  // for implementing TLS encryption
-	"log"         // for logging
+import (
+	"crypto/tls"
+	"log"
 	"time"
 )
 
-// ListenAndServe starts a TLS server on the specified address.
+// ListenAndServe starts a TLS server on the specified address and returns a channel for communication.
 func ListenAndServe(addr string) (chan NetChan, error) {
-
-	// Generate a TLS config with certificates and other settings.
-	tlsConfig, err := generateTLSConfig() // This function is not shown here but is assumed to generate the TLS configuration
+	tlsConfig, err := generateTLSConfig()
 	if err != nil {
-		return nil, err // If there's an error, return it immediately
+		return nil, err
 	}
 
-	// Creates a buffered channel of NetChan with a capacity of 100000.
-	// This channel will be used to send and receive data from the TLS connection.
-	netchan := make(chan NetChan, 100000) // Initialize the channel to buffer connections
+	netchan := make(chan NetChan, 100000) // Channel for NetChan instances.
 
 	for {
-		// Create a listener that will listen on the specified TCP address with the TLS configuration.
-		listener, err := tls.Listen("tcp", addr, tlsConfig) // 'tcp' indicates the use of the TCP/IP protocol for the listener
-		defer listener.Close()                              // Ensure the listener is closed when the function exits
+		listener, err := tls.Listen("tcp", addr, tlsConfig)
 		if err != nil {
-			log.Println(err) // Log any errors that occur when trying to listen
-		} else {
-			log.Printf("netchan is listening on %s\n", addr) // Log that the server is successfully listening on the address
-
-			// Continuously accept new connections
-			for {
-				conn, err := listener.Accept() // Accept a new connection
-				if err != nil {
-					log.Printf("Failed to accept connection: %v", err) // Log any errors that occur on accepting a connection
-					continue                                           // Continue to the next iteration to accept more connections
-				}
-
-				// Handle the connection in a new goroutine
-				// This allows the server to handle multiple connections concurrently
-				go handleConnection(conn, netchan) // This function is not shown here but is assumed to handle the connection
-			}
+			log.Println(err)            // Log errors related to starting the listener.
+			time.Sleep(time.Second * 5) // Wait before retrying.
+			continue
 		}
-		// Wait a bit before the next attempt to bind to the port if there was an error earlier
-		time.Sleep(time.Second * 5) // Sleep for 5 seconds before trying to listen again
+		defer listener.Close() // Ensure the listener is closed on function exit.
+
+		log.Printf("Listening on %s\n", addr) // Log successful listener start.
+
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Printf("Failed to accept connection: %v", err)
+				continue // Continue accepting new connections.
+			}
+
+			go handleConnection(conn, netchan) // Handle connections in separate goroutines.
+		}
 	}
 }
