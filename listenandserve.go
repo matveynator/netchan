@@ -2,10 +2,7 @@ package netchan // Defines the package name which is netchan
 
 import ( // Imports multiple packages into the program
 	"crypto/tls"  // for implementing TLS encryption
-	"crypto/x509" // for X.509 cryptography functions
-	"io"          // for basic I/O primitives
 	"log"         // for logging
-	"net"         // for network I/O
 )
 
 // ListenAndServe starts a TLS server on the specified address.

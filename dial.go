@@ -5,10 +5,7 @@ package netchan
 // Importing necessary packages:
 import (
 	"crypto/tls"  // Provides TLS encryption functionality.
-	"crypto/x509" // Used for X509 certificate parsing, not directly used in this snippet.
-	"io"          // Basic input/output interface, not directly used in this snippet.
 	"log"         // Logging package to log messages.
-	"net"         // Provides a portable interface for network I/O.
 )
 
 // Dial creates a secure client connection to a TLS server.

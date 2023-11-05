@@ -7,6 +7,7 @@ package netchan
 import (
 	"log"
 	"net"
+	"time"
 )
 
 // handleConnection is a function that takes a net.Conn interface and a receive-only channel of netChan type.
