@@ -3,20 +3,21 @@ package netchan // Defines the package name which is netchan
 import ( // Imports multiple packages into the program
 	"crypto/tls"  // for implementing TLS encryption
 	"log"         // for logging
+	"time"
 )
 
 // ListenAndServe starts a TLS server on the specified address.
-func ListenAndServe(addr string) (<-chan netChan, error) {
+func ListenAndServe(addr string) (chan NetChan, error) {
 
 	// Generate a TLS config with certificates and other settings.
 	tlsConfig, err := generateTLSConfig() // This function is not shown here but is assumed to generate the TLS configuration
 	if err != nil {
-		return err // If there's an error, return it immediately
+		return nil, err // If there's an error, return it immediately
 	}
 
-	// Creates a buffered channel of netChan with a capacity of 100000.
+	// Creates a buffered channel of NetChan with a capacity of 100000.
 	// This channel will be used to send and receive data from the TLS connection.
-	netchan := make(chan netChan, 100000) // Initialize the channel to buffer connections
+	netchan := make(chan NetChan, 100000) // Initialize the channel to buffer connections
 
 	for {
 		// Create a listener that will listen on the specified TCP address with the TLS configuration.

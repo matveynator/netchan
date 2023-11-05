@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// handleConnection is a function that takes a net.Conn interface and a receive-only channel of netChan type.
+// handleConnection is a function that takes a net.Conn interface and a receive-only channel of NetChan type.
 // It encapsulates the logic needed to handle a single network connection.
-func handleConnection(conn net.Conn, netchan <-chan netChan) {
+func handleConnection(conn net.Conn, netchan <-chan NetChan) {
 	// "defer conn.Close()" ensures that the connection will be closed when the function returns,
 	// as a cleanup action to avoid leaking resources.
 	defer conn.Close()
@@ -33,7 +33,7 @@ func handleConnection(conn net.Conn, netchan <-chan netChan) {
 			}
 			// If the channel is still open and a message is received, it is printed out.
 			// The message structure is assumed to have id, secret, and data fields.
-			log.Printf("Received netchan message: ID=%s, Secret=%s, Data=%s\n", message.id, message.secret, message.data)
+			log.Printf("Received netchan message: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
 
 		// The default case is executed if no other case is ready,
 		// i.e., if there are no messages on the netchan to be read.

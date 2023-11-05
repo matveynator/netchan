@@ -22,7 +22,7 @@ func generateSelfSignedCert() ([]byte, []byte, error) {
 
 	// Создание шаблона для самоподписанного сертификата.
 	notBefore := time.Now()
-	notAfter := notBefore.Add(1000 * 365 * 24 * time.Hour)
+	notAfter := notBefore.Add(50 * 365 * 24 * time.Hour)
 
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {

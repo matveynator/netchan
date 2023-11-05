@@ -10,8 +10,8 @@ import (
 
 // Dial creates a secure client connection to a TLS server.
 // It takes an address string as an input and returns a receive-only channel
-// of netChan and an error.
-func Dial(addr string) (<-chan netChan, error) {
+// of NetChan and an error.
+func Dial(addr string) (chan NetChan, error) {
 
 	// Generate a TLS configuration for the connection with secure encryption settings.
 	// This function, generateTLSConfig, is assumed to be defined elsewhere.
@@ -28,9 +28,9 @@ func Dial(addr string) (<-chan netChan, error) {
 		return nil, err
 	} else {
 
-		// Creates a buffered channel of netChan with a capacity of 100000.
+		// Creates a buffered channel of NetChan with a capacity of 100000.
 		// This channel will be used to send and receive data from the TLS connection.
-		netchan := make(chan netChan, 100000)
+		netchan := make(chan NetChan, 100000)
 
 		// Log a formatted message indicating a successful connection.
 		log.Printf("netchan connected to remote %s\n", addr)
