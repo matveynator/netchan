@@ -4,6 +4,8 @@ package netchan
 import (
 	"crypto/tls" // For secure communication using TLS.
 	"log"        // For logging information.
+	"net"
+	"time"
 )
 
 // Dial establishes a secure connection to a TLS server at the given address.
@@ -17,16 +19,19 @@ func Dial(addr string) (chan NetChan, error) {
 	}
 
 	// Attempt to establish a TLS connection with the server.
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	log.Println("Attempting to connect to server:", addr)
+	dialer := net.Dialer{Timeout: time.Second * 10}
+	conn, err := tls.DialWithDialer(&dialer, "tcp", addr, tlsConfig)
 	if err != nil {
+		log.Printf("Failed to connect: %v\n", err)
 		return nil, err // Report failure to connect.
 	}
 
-	// Create a channel for NetChan instances with ample buffer space.
-	netchan := make(chan NetChan, 100000)
-
 	// Announce successful connection establishment.
 	log.Printf("netchan connected to remote %s\n", addr)
+
+  // Create a channel for NetChan instances with ample buffer space.
+  netchan := make(chan NetChan, 100000)
 
 	// Delegate the connection management to a concurrent routine.
 	go handleConnection(conn, netchan)
