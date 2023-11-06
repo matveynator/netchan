@@ -74,6 +74,7 @@ func generateTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS13,
+		InsecureSkipVerify: true,
 	}
 
 	return tlsConfig, nil
