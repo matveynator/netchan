@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"test/netchan"
+	"github.com/matveynator/netchan"
 	"time"
 )
 
@@ -19,8 +19,8 @@ func main() {
 
 func server() {
 	// Слушаем входящие соединения
-	send := make(chan netchan.NetChan, 100000)    // Channel for NetChan instances.
-	receive := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
+	send := make(chan netchan.NetChanType, 100000)    // Channel for NetChan instances.
+	receive := make(chan netchan.NetChanType, 100000) // Channel for NetChan instances.
 
 	err := netchan.ListenAndServe("127.0.0.1:9999", send, receive)
 	if err != nil {
@@ -48,17 +48,17 @@ func server() {
 
 func client() {
 
-	send := make(chan netchan.NetChan, 100000)    // Channel for NetChan instances.
-	receive := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
+	send := make(chan netchan.NetChanType, 100000)    // Channel for NetChan instances.
+	receive := make(chan netchan.NetChanType, 100000) // Channel for NetChan instances.
 	// Подключаемся к серверу
-	err := netchan.Dial("127.0.0.1:9999", send, receive)
+	send, receive, err := netchan.Dial("127.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
 	} else {
 		log.Println("connected")
 	}
 
-	data := netchan.NetChan{ // Assuming NetChan is the correct exported type
+	data := netchan.NetChanType{ // Assuming NetChan is the correct exported type
 		Id:     "1",
 		Secret: "strongpass",
 		Data:   "Привет, мир!",

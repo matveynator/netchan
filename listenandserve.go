@@ -7,7 +7,7 @@ import (
 )
 
 // ListenAndServe starts a TLS server on the specified address and returns a channel for communication.
-func ListenAndServe(addr string, send chan<- NetChan, receive <-chan NetChan) error {
+func ListenAndServe(addr string, send chan<- NetChanType, receive <-chan NetChanType) error {
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
 		return err

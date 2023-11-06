@@ -1,6 +1,6 @@
 package netchan
 
-type NetChan struct {
+type NetChanType struct {
 	Id     string
 	Secret string
 	Data   string

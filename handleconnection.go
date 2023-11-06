@@ -8,14 +8,13 @@ import (
 )
 
 // handleConnection deals with incoming messages on a network connection.
-func handleConnection(conn net.Conn, send chan<- NetChan, receive <-chan NetChan) {
+func handleConnection(conn net.Conn, send chan<- NetChanType, receive <-chan NetChanType) {
 
 	defer conn.Close() // Ensures the connection is closed to prevent resource leaks.
 
-
-
-
 	for {
+
+		// Receiving data through network channel:
 
     // Create a buffer to read from the connection
     buffer := make([]byte, 1024)
