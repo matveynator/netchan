@@ -19,21 +19,25 @@ func main() {
 
 func server() {
 	// Слушаем входящие соединения
-	ncs := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
+	send := make(chan netchan.NetChan, 100000)    // Channel for NetChan instances.
+	receive := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
 
-	err := netchan.ListenAndServe("127.0.0.1:9999", ncs)
+	err := netchan.ListenAndServe("127.0.0.1:9999", send, receive)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for {
 		select {
-		case message, ok := <-ncs:
+		case message, ok := <-receive:
 			if !ok {
 				log.Println("Main netchan channel closed, exiting")
 				return
 			}
-			log.Printf("Received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			//send mesaage back
+			time.Sleep(time.Second)
+			send <- message
 
 		default:
 			time.Sleep(time.Second) // Throttles the loop to avoid high CPU usage.
@@ -44,9 +48,10 @@ func server() {
 
 func client() {
 
-	ncc := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
+	send := make(chan netchan.NetChan, 100000)    // Channel for NetChan instances.
+	receive := make(chan netchan.NetChan, 100000) // Channel for NetChan instances.
 	// Подключаемся к серверу
-	err := netchan.Dial("127.0.0.1:9999", ncc)
+	err := netchan.Dial("127.0.0.1:9999", send, receive)
 	if err != nil {
 		log.Fatal(err)
 	} else {
@@ -59,16 +64,19 @@ func client() {
 		Data:   "Привет, мир!",
 	}
 
-	ncc <- data
+	send <- data
 
 	for {
 		select {
-		case message, ok := <-ncc:
+		case message, ok := <-receive:
 			if !ok {
 				log.Println("Main netchan channel closed, exiting")
 				return
 			}
-			log.Printf("Received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			log.Printf("Client received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			//send mesaage back
+			time.Sleep(time.Second)
+			send <- message
 
 		default:
 			time.Sleep(time.Second) // Throttles the loop to avoid high CPU usage.

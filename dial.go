@@ -10,7 +10,7 @@ import (
 
 // Dial establishes a secure connection to a TLS server at the given address.
 // It returns a channel for NetChan instances to communicate through, and an error, if any.
-func Dial(addr string, netchan chan NetChan) error {
+func Dial(addr string, send chan<- NetChan, receive <-chan NetChan,) error {
 
 	// Obtain TLS configuration with robust security.
 	tlsConfig, err := generateTLSConfig()
@@ -31,7 +31,7 @@ func Dial(addr string, netchan chan NetChan) error {
 		log.Printf("netchan connected to remote %s\n", addr)
 		
 		// Handle connection in a separate goroutine	
-		go handleConnection(conn, netchan)
+		go handleConnection(conn, send, receive)
 		
 		//
 		return nil

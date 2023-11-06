@@ -8,7 +8,7 @@ import (
 )
 
 // handleConnection deals with incoming messages on a network connection.
-func handleConnection(conn net.Conn, netchan chan NetChan) {
+func handleConnection(conn net.Conn, send chan<- NetChan, receive <-chan NetChan) {
 
 	defer conn.Close() // Ensures the connection is closed to prevent resource leaks.
 
@@ -32,7 +32,7 @@ func handleConnection(conn net.Conn, netchan chan NetChan) {
 
 
 		select {
-		case message, ok := <-netchan:
+		case message, ok := <-receive:
 			if !ok {
 				log.Println("Main netchan channel closed, exiting")
 				return
