@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/matveynator/netchan"
 	"log"
-  "github.com/matveynator/netchan"
 	"time"
 )
 
@@ -53,9 +53,7 @@ func client() {
 	// Подключаемся к серверу
 	send, receive, err := netchan.Dial("127.0.0.1:9999")
 	if err != nil {
-		log.Fatal(err)
-	} else {
-		log.Println("connected")
+		log.Println(err)
 	}
 
 	data := netchan.NetChanType{ // Assuming NetChan is the correct exported type

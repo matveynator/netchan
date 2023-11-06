@@ -6,14 +6,13 @@ import (
 
 type LogData struct {
 	logMessage string
-	canRepeat bool
+	canRepeat  bool
 	//processId string
 }
 
-
 var LogTask chan LogData
 
-func init () {
+func init() {
 	//print microseconds
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	//initialize buffered log channels:
@@ -35,16 +34,16 @@ func ErrorLogWorker() {
 	log.Println("Started netchan logging worker in background.")
 	for {
 		select {
-			//в случае если есть задание в канале LogTask
-		case newLogTask := <- LogTask :
+		//в случае если есть задание в канале LogTask
+		case newLogTask := <-LogTask:
 			//log.Println("newLogTask received")
-			if newLogTask.canRepeat==false {
+			if newLogTask.canRepeat == false {
 				//не повторяем ошибки бесконечно:
-				if previousLogMessage != newLogTask.logMessage  {
+				if previousLogMessage != newLogTask.logMessage {
 					log.Println(newLogTask.logMessage)
 					previousLogMessage = newLogTask.logMessage
 				}
-			}	else {
+			} else {
 				log.Println(newLogTask.logMessage)
 				previousLogMessage = newLogTask.logMessage
 			}
@@ -53,6 +52,5 @@ func ErrorLogWorker() {
 }
 
 func init() {
-	go	ErrorLogWorker()
+	go ErrorLogWorker()
 }
-

@@ -2,6 +2,7 @@ package netchan
 
 import (
 	"crypto/tls"
+	"fmt"
 	"log"
 	"time"
 )
@@ -16,7 +17,7 @@ func ListenAndServe(addr string, send chan<- NetChanType, receive <-chan NetChan
 	for {
 		listener, err := tls.Listen("tcp", addr, tlsConfig)
 		if err != nil {
-			log.Println(err)            // Log errors related to starting the listener.
+			Printonce(fmt.Sprintf("TLS listen error: %s", err))
 			time.Sleep(time.Second * 5) // Wait before retrying.
 			continue
 		} else {
@@ -30,7 +31,7 @@ func ListenAndServe(addr string, send chan<- NetChanType, receive <-chan NetChan
 					log.Printf("Failed to accept connection: %v", err)
 					continue // Continue accepting new connections.
 				} else {
-				go handleConnection(conn, send, receive) // Handle connections in separate goroutines.
+					go handleConnection(conn, send, receive) // Handle connections in separate goroutines.
 				}
 			}
 		}
