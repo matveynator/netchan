@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-  netchan	"github.com/matveynator/netchan"
+  "github.com/matveynator/netchan"
 	"time"
 )
 
