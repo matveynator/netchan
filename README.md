@@ -8,7 +8,7 @@
 ## Overview
 `netchan` stands as a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by [Rob Pike’s initial concept](https://github.com/matveynator/netchan-old), it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
 
-## Key Features:
+## General Goals and Principles:
 1. **Ease of Use**: [The library’s interface should be intuitively understandable and reflect standard channel operations in Go.*(Focuses on the user-friendly interface and intuitive operation aligned with Go's standard channel operations.)*](/wiki/EaseofUse.md)
 2. **Secure by Default**: [The library should employ modern encryption techniques, as well as reliable practices for authentication and authorization.*(Emphasizes the importance of modern encryption and robust authentication and authorization practices.)*](/wiki/SecurebyDefault.md)
 3. **Scalability and High Performance**: [Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.*(Addresses the library's capability to handle large-scale distributed systems efficiently.)*](/wiki/ScalabilityandHighPerformance.md)
