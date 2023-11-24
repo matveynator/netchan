@@ -6,6 +6,10 @@
 3. **Scalability and High Performance**: Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.
 4. **Network Adherence to CSP Principles**: Full compliance with the Communicating Sequential Processes (CSP) model.
 5. **Principles of Pure Go Programming**: Adherence to the principles of pure Go programming.
+6. **Redundancy, Failover and Recovery**: Design the system to automatically detect network channel failures and switch to a backup channel. Create several network channels for each go channel to provide redundancy. 
+7. **Bidirectional Client-Server Role**: Each client in the network will also function as a server, and vice versa. This dual role enhances network resilience and decentralizes communication.
+8. **Unified Application Architecture**: By using netchan you are designing the network application in such a way that each client/server becomes part of a cohesive, unified application, enhancing collaboration and data flow.
+
 
 ## Package Structure
 1. **Network Interaction Functions**
