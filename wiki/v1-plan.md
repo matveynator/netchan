@@ -1,14 +1,14 @@
 # Updated Development Roadmap for the "netchan" Library in Golang
 
 ## General Goals and Principles
-1. **Ease of Use**: The library’s interface should be intuitively understandable and reflect standard channel operations in Go.
-2. **Secure by Default**: The library should employ modern encryption techniques, as well as reliable practices for authentication and authorization.
-3. **Scalability and High Performance**: Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.
-4. **Network Adherence to CSP Principles**: Full compliance with the Communicating Sequential Processes (CSP) model.
-5. **Principles of Pure Go Programming**: Adherence to the principles of pure Go programming.
-6. **Redundancy, Failover and Recovery**: Design the system to automatically detect network channel failures and switch to a backup channel. Create several network channels for each go channel to provide redundancy. 
-7. **Bidirectional Client-Server Role**: Each client in the network will also function as a server, and vice versa. This dual role enhances network resilience and decentralizes communication.
-8. **Unified Application Architecture**: By using netchan you are designing the network application in such a way that each client/server becomes part of a cohesive, unified application, enhancing collaboration and data flow.
+1. **Ease of Use**: The library’s interface should be intuitively understandable and reflect standard channel operations in Go.*(Focuses on the user-friendly interface and intuitive operation aligned with Go's standard channel operations.)*
+2. **Secure by Default**: The library should employ modern encryption techniques, as well as reliable practices for authentication and authorization.*(Emphasizes the importance of modern encryption and robust authentication and authorization practices.)*
+3. **Scalability and High Performance**: Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.*(Addresses the library's capability to handle large-scale distributed systems efficiently.)*
+4. **Network Adherence to CSP Principles**: Full compliance with the Communicating Sequential Processes (CSP) model.*(Ensures compliance with the Communicating Sequential Processes model, a key aspect of concurrent programming.)*
+5. **Principles of Pure Go Programming**: Adherence to the principles of pure Go programming.*(Highlights adherence to the core principles and idioms of Go programming.)*
+6. **Redundancy, Failover and Recovery**: Design the system to automatically detect network channel failures and switch to a backup channel. Create several network channels for each go channel to provide redundancy.*(Specific to network reliability, focusing on handling channel failures and maintaining network stability through redundancy and failover mechanisms.)*
+7. **Bidirectional Client-Server Role**: Each client in the network will also function as a server, and vice versa. This dual role enhances network resilience and decentralizes communication. *(Unique in its emphasis on each network node's dual role as both client and server, contributing to the network's decentralized structure.)*
+8. **Unified Application Architecture**: By using netchan you are designing the network application in such a way that each client/server becomes part of a cohesive, unified application, enhancing collaboration and data flow. *(This is about the overarching architectural principle where using "netchan" leads to the creation of a unified network application, enhancing collaboration and data flow.)*
 
 
 ## Package Structure
