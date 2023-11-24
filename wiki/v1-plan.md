@@ -1,13 +1,11 @@
-Development Roadmap for the "netchan" Library in Golang
-Feel free to contribute your ideas and suggestions!
+# Updated Development Roadmap for the "netchan" Library in Golang
 
 ## General Goals and Principles
 1. **Ease of Use**: The library’s interface should be intuitively understandable and reflect standard channel operations in Go.
 2. **Secure by Default**: The library should employ modern encryption techniques, as well as reliable practices for authentication and authorization.
-3. **Scalability**: Suitable for distributed systems, providing high throughput and scalability.
-4. **High Performance**: Optimized to ensure low overhead and rapid data transfer.
-5. **Network Adherence to CSP Principles**: Full compliance with the Communicating Sequential Processes (CSP) model.
-6. **Principles of Pure Go Programming**: Adherence to the principles of pure Go programming.
+3. **Scalability and High Performance**: Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.
+4. **Network Adherence to CSP Principles**: Full compliance with the Communicating Sequential Processes (CSP) model.
+5. **Principles of Pure Go Programming**: Adherence to the principles of pure Go programming.
 
 ## Package Structure
 1. **Network Interaction Functions**
@@ -34,7 +32,20 @@ Feel free to contribute your ideas and suggestions!
 
 5. **Storing Shared Encryption Keys**
    - Encryption keys, used for connecting to the server, are stored inside the binary file.
-   - Utilizing obfuscation and key splitting, as well as the `go:embed` format, to prevent decompilation from binary code.
+   - Utilizing obfuscation and key splitting, as well as the `go:embed’ format, to prevent decompilation from binary code.
+
+6. **Interactive Connectivity Establishment (ICE) Integration and Network Channel RAID System**
+
+   A. **ICE Integration**
+      - Implement ICE for optimal pathfinding in data streams, ensuring robust and flexible network communication.
+      - **Bidirectional Client-Server Role**: Each client in the network will also function as a server, and vice versa. This dual role enhances network resilience and decentralizes communication.
+      - Gather local and public IP addresses for each client/server.
+      - Perform connectivity checks and prioritize best connection paths.
+      - Ensure security during the ICE process.
+
+   B. **RAID-like Network Channel System (Focused on Channel Management and Resilience)**
+      - **Multiple Channel Establishment**: Create several network channels for each connection to provide redundancy.
+      - **Failover and Recovery**: Design the system to automatically detect channel failures and switch to a backup channel.
 
 ## Implementation
 1. **Interfaces and Abstractions**: 
@@ -48,6 +59,7 @@ Feel free to contribute your ideas and suggestions!
    - Monitoring connection status and managing errors.
    - Automatically recovering after connection loss.
 
+--
 
 >
 > Here is a preliminary outline of the plan that I have prepared. I would be grateful if you could take the time to review it and enrich it with your suggestions, should it pique your interest.
