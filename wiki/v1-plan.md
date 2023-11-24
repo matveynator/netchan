@@ -1,7 +1,7 @@
 # Updated Development Roadmap for the "netchan" Library in Golang
 
 ## General Goals and Principles
-1. **Ease of Use**: The library’s interface should be intuitively understandable and reflect standard channel operations in Go.*(Focuses on the user-friendly interface and intuitive operation aligned with Go's standard channel operations.)*
+1. **Ease of Use**: [The library’s interface should be intuitively understandable and reflect standard channel operations in Go.*(Focuses on the user-friendly interface and intuitive operation aligned with Go's standard channel operations.)*](EaseofUse.md)
 2. **Secure by Default**: [The library should employ modern encryption techniques, as well as reliable practices for authentication and authorization.*(Emphasizes the importance of modern encryption and robust authentication and authorization practices.)*](SecurebyDefault.md)
 3. **Scalability and High Performance**: Designed for distributed systems, ensuring high throughput, scalability, and optimized for low overhead and rapid data transfer.*(Addresses the library's capability to handle large-scale distributed systems efficiently.)*
 4. **Adherence to CSP Principles**: [Full compliance with the Communicating Sequential Processes (CSP) model.*(Ensures compliance with the Communicating Sequential Processes model, a key aspect of concurrent programming.)*](AdherencetoCSPPrinciples.md)
