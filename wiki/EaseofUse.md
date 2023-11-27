@@ -1,4 +1,6 @@
-"Ease of Use" refers to designing the library in a way that makes it intuitive and straightforward for developers to use. Specifically, it means:
+[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+
+"Ease of Use" refers to designing the netchan library in a way that makes it intuitive and straightforward for developers to use. Specifically, it means:
 
 1. **Intuitive Interface**: The functions, methods, and overall design of the library should be clear and easy to understand. This includes having well-named functions and a logical structure that mirrors familiar patterns in Go programming.
 
@@ -12,4 +14,4 @@
 
 6. **Streamlined Workflows**: The library should streamline common tasks, automating or simplifying complex operations where possible. This can include utilities for common network operations, easy-to-use interfaces for network communication, etc.
 
-In summary, "Ease of Use" in your plan aims to make the "netchan" library user-friendly and accessible, aligning with Go's standard practices and reducing complexity for the end-users, i.e., the developers integrating this library into their networked applications.
+In summary, "Ease of Use" in our plan aims to make the netchan library user-friendly and accessible, aligning with Go's standard practices and reducing complexity for the end-users, i.e., the developers integrating this library into their networked applications.
