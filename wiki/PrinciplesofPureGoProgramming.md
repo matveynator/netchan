@@ -1,4 +1,6 @@
-"Principles of Pure Go Programming" refers to adhering to the best practices, idiomatic patterns, and design philosophies inherent to the Go programming language. Specifically, in the case of your library, this could encompass several key aspects:
+[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+
+"Principles of Pure Go Programming" refers to adhering to the best practices, idiomatic patterns, and design philosophies inherent to the Go programming language. Specifically, in the case of netchan library, this could encompass several key aspects:
 
 1. **Simplicity and Readability**: Go is known for its emphasis on simplicity. Writing code that is straightforward and easy to understand is a core principle. This means avoiding overly complex constructs and favoring clear, concise code.
 
@@ -14,4 +16,4 @@
 
 7. **Standard Library Utilization**: Go has a powerful standard library. Leveraging these well-tested and optimized packages wherever appropriate, instead of reinventing the wheel, is a hallmark of idiomatic Go programming.
 
-In summary, "Principles of Pure Go Programming" in the context of your library development plan would involve embracing these key Go idioms and practices, ensuring that "netchan" is developed in a way that is true to the spirit and strengths of the Go language.
+In summary, "Principles of Pure Go Programming" in the context of netchan library development plan would involve embracing these key Go idioms and practices, ensuring that "netchan" is developed in a way that is true to the spirit and strengths of the Go language.
