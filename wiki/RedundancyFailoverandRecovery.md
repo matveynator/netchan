@@ -1,3 +1,5 @@
+[Go back](https://github.com/matveynator/netchan)
+
 "Redundancy, Failover and Recovery" refers to specific network resilience strategies. Let's break down each term:
 
 1. **Redundancy**: This involves creating multiple network channels for each Go channel within your library. The idea here is to have backup channels in place, so if one channel encounters problems (like a network disruption), others are readily available to take over. This redundancy ensures that the network communication is less likely to be interrupted, as there are multiple pathways for data transfer.
