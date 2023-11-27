@@ -1,4 +1,4 @@
-[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+[Go back](/wiki/v1-plan.md#general-goals-and-principles)
 
 "Scalability and High Performance" refers to two key aspects of the library's design and functionality:
 

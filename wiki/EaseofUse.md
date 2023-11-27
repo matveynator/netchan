@@ -1,4 +1,4 @@
-[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+[Go back](/wiki/v1-plan.md#general-goals-and-principles)
 
 "Ease of Use" refers to designing the netchan library in a way that makes it intuitive and straightforward for developers to use. Specifically, it means:
 

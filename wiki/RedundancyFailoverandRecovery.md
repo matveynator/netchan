@@ -1,4 +1,4 @@
-[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+[Go back](/wiki/v1-plan.md#general-goals-and-principles)
 
 "Redundancy, Failover and Recovery" refers to specific network resilience strategies. Let's break down each term:
 

@@ -1,4 +1,4 @@
-[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+[Go back](/wiki/v1-plan.md#general-goals-and-principles)
 
 "Principles of Pure Go Programming" refers to adhering to the best practices, idiomatic patterns, and design philosophies inherent to the Go programming language. Specifically, in the case of netchan library, this could encompass several key aspects:
 

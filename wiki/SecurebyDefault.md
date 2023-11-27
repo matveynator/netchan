@@ -1,4 +1,4 @@
-[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+[Go back](/wiki/v1-plan.md#general-goals-and-principles)
 
 "Secure by Default" means that our netchan library is designed with security as a fundamental and integral aspect, rather than as an afterthought or an optional addition. Here's what this principle entails in our case:
 
