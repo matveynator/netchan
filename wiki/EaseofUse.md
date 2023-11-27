@@ -10,8 +10,7 @@
 
 4. **Reflecting Standard Go Channel Operations**: Since the library is based on Go’s channel concept, its operations and usage should align with what Go developers are already familiar with. This reduces the learning curve and makes the library more approachable.
 
-5. **Error Handling and Feedback**: The library should have robust error handling and provide clear, informative feedback to the developer. This helps in quickly identifying and resolving issues, enhancing the overall development experience.
+5. **Consistent Developer Experience**: From a developer's perspective, our netchan application architecture can provide a more consistent and easy to understand experience, as the underlying complexities of the network interactions are abstracted away.
 
-6. **Streamlined Workflows**: The library should streamline common tasks, automating or simplifying complex operations where possible. This can include utilities for common network operations, easy-to-use interfaces for network communication, etc.
 
 In summary, "Ease of Use" in our plan aims to make the netchan library user-friendly and accessible, aligning with Go's standard practices and reducing complexity for the end-users, i.e., the developers integrating this library into their networked applications.
