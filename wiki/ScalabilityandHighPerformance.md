@@ -1,3 +1,5 @@
+[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+
 "Scalability and High Performance" refers to two key aspects of the library's design and functionality:
 
 1. **Scalability**: This pertains to the library's ability to efficiently handle increasing amounts of work or to be capable of enlargement. In practical terms for the "netchan" library, it means the library should perform effectively as the number of clients, amount of data, or complexity of the network interactions increases. This can involve:
