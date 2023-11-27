@@ -40,8 +40,6 @@ go get -u github.com/matveynator/netchan
 ## Documentation
 - [v1.0 Plan](wiki/v1-plan.md)
 - Usage Examples
-- API References
-- Secure by default
 
 ## Community and Support
 Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository.
