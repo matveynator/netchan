@@ -1,4 +1,6 @@
-"Adherence to CSP Principles" in the context of the "netchan" library refers to aligning the network communication and concurrency model of the library with the principles of Communicating Sequential Processes (CSP). CSP is a formal language for describing patterns of interaction in concurrent systems. In the specific case of your library, this adherence would manifest in several ways:
+[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+
+"Adherence to CSP Principles" in the context of our netchan library refers to aligning the network communication and concurrency model of the library with the principles of Communicating Sequential Processes (CSP). CSP is a formal language for describing patterns of interaction in concurrent systems. In the specific case of netchan library, this adherence would manifest in several ways:
 
 1. **Channel-Based Communication**: Just like CSP, where the primary method of interaction between processes is through channels, "netchan" would utilize network channels as a core mechanism for communication between distributed systems or components.
 
