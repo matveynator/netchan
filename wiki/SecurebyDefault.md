@@ -1,4 +1,6 @@
-"Secure by Default" means that the library is designed with security as a fundamental and integral aspect, rather than as an afterthought or an optional addition. Here's what this principle entails in your case:
+[Go back](https://github.com/matveynator/netchan#general-goals-and-principles)
+
+"Secure by Default" means that our netchan library is designed with security as a fundamental and integral aspect, rather than as an afterthought or an optional addition. Here's what this principle entails in our case:
 
 1. **Modern Encryption Techniques**:
    - The library uses up-to-date and robust encryption methods to protect data during transmission.
@@ -19,4 +21,4 @@
 5. **Documentation and Guidance for Secure Usage**:
    - Providing clear documentation on how to use the library securely, including guidelines on setting up secure connections, managing encryption keys, and other best practices.
 
-"Secure by Default" in the context of your "netchan" library thus emphasizes a proactive, comprehensive approach to security, ensuring that every aspect of network communication is secure, from the establishment of connections to the transfer of data.
+"Secure by Default" in the context of our netchan library thus emphasizes a proactive, comprehensive approach to security, ensuring that every aspect of network communication is secure, from the establishment of connections to the transfer of data.
