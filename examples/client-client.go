@@ -19,10 +19,7 @@ func main() {
 
 func server() {
 	// Слушаем входящие соединения
-	send := make(chan netchan.NetChanType, 100000)    // Channel for NetChan instances.
-	receive := make(chan netchan.NetChanType, 100000) // Channel for NetChan instances.
-
-	err := netchan.ListenAndServe("127.0.0.1:9999", send, receive)
+	send, receive, err := netchan.Listen("127.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -48,8 +45,6 @@ func server() {
 
 func client() {
 
-	send := make(chan netchan.NetChanType, 100000)    // Channel for NetChan instances.
-	receive := make(chan netchan.NetChanType, 100000) // Channel for NetChan instances.
 	// Подключаемся к серверу
 	send, receive, err := netchan.Dial("127.0.0.1:9999")
 	if err != nil {

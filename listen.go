@@ -8,10 +8,15 @@ import (
 )
 
 // ListenAndServe starts a TLS server on the specified address and returns a channel for communication.
-func ListenAndServe(addr string, send chan<- NetChanType, receive <-chan NetChanType) error {
+
+func Listen(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType, err error) {
+
+  sendChan = make(chan NetChanType, 100000)    // Channel for outgoing data.
+  receiveChan = make(chan NetChanType, 100000) // Channel for incoming data.
+
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
-		return err
+		return
 	}
 
 	for {
@@ -31,7 +36,7 @@ func ListenAndServe(addr string, send chan<- NetChanType, receive <-chan NetChan
 					log.Printf("Failed to accept connection: %v", err)
 					continue // Continue accepting new connections.
 				} else {
-					go handleConnection(conn, send, receive) // Handle connections in separate goroutines.
+					go handleConnection(conn, sendChan, receiveChan) // Handle connections in separate goroutines.
 				}
 			}
 		}

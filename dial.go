@@ -82,6 +82,7 @@ func dialWorkerRun(workerId int, addr string, sendChan chan NetChanType, receive
 				return
 			}
 			if numberOfLines > 0 {
+			//reverse connection (here we receive data back)
 				log.Printf("Dial worker received unexpected data back: %s", buffer[:numberOfLines])
 			}
 		}
