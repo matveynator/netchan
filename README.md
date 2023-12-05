@@ -1,3 +1,5 @@
+[![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan)
+
 # Welcome to the netchan Wiki!
 
 <p align="right">
