@@ -20,7 +20,7 @@
 
 ## Package Structure
 1. **Network Interaction Functions**
-   - `ListenAndServe`: Handling incoming connections.
+   - `Listen`: Handling incoming connections.
    - `Dial`: Initiating outgoing connections.
    - Both methods should utilize interfaces to facilitate future modifications and enhance functionality.
    - Implementation of a mechanism for file descriptor transmission to ensure graceful restart without losing current connections.
