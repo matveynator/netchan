@@ -1,79 +1,81 @@
+// Package main demonstrates the use of the netchan package for creating a simple
+// client-server application. This application includes a server and a client, where
+// the client sends random messages to the server, and the server echoes them back.
 package main
 
 import (
-	"github.com/matveynator/netchan"
-	"log"
-	"time"
+	"github.com/matveynator/netchan" // netchan package for network channel functionalities.
+	"log"                            // log package for logging messages to the console.
+	"math/rand"                      // rand package for generating random data.
+	"time"                           // time package for handling time-related functionality.
 )
 
+// main is the entry point of the application. It concurrently starts the server
+// and the client as separate goroutines, allowing them to operate simultaneously.
 func main() {
-	// Запустим сервер в горутине
+	go server() // Launch server as a goroutine.
+	go client() // Launch client as a goroutine.
 
-	go server()
-	time.Sleep(3 * time.Second)
-	go client()
-
-	for {
-	}
+	// This select statement keeps the main goroutine alive indefinitely.
+	// It's necessary as the application should continue running to support
+	// the server and client goroutines.
+	select {}
 }
 
+// server function manages the server-side operations of the application.
+// It continuously listens for incoming messages and sends back echo responses.
 func server() {
-	// Слушаем входящие соединения
+	// Establishing a network channel to receive and send messages.
+	// This channel will be used for communication with the client.
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) // If an error occurs, log it and terminate the application.
 	}
 
-	for {
-		select {
-		case message, ok := <-receive:
-			if !ok {
-				log.Println("Main netchan channel closed, exiting")
-				return
-			}
-			log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
-			//send mesaage back
-			time.Sleep(time.Second)
-			send <- message
-
-		default:
-			time.Sleep(time.Second) // Throttles the loop to avoid high CPU usage.
-		}
+	// Continuously processing incoming messages from the client.
+	for message := range receive {
+		// Logging each received message's details for monitoring.
+		log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+		send <- message // Echoing the received message back to the client.
 	}
-
 }
 
+// client function handles the client-side operations of the application.
+// It periodically sends random messages to the server.
 func client() {
-
-	// Подключаемся к серверу
-	send, receive, err := netchan.Dial("127.0.0.1:9999")
+	// Creating a network channel to send messages to the server.
+	send, _, err := netchan.Dial("127.0.0.1:9999")
 	if err != nil {
-		log.Println(err)
+		log.Println(err) // Log the error but do not terminate; the server might still be starting.
+		return
 	}
 
-	data := netchan.NetChanType{ // Assuming NetChan is the correct exported type
-		Id:     "1",
-		Secret: "strongpass",
-		Data:   "Привет, мир!",
-	}
-
-	send <- data
-
+	// Sending messages at regular intervals in an infinite loop.
 	for {
-		select {
-		case message, ok := <-receive:
-			if !ok {
-				log.Println("Main netchan channel closed, exiting")
-				return
-			}
-			log.Printf("Client received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
-			//send mesaage back
-			time.Sleep(time.Second)
-			send <- message
-
-		default:
-			time.Sleep(time.Second) // Throttles the loop to avoid high CPU usage.
+		// Constructing a message with a random string as data.
+		data := netchan.NetChanType{
+			Id:     "1",            // Static ID for the message.
+			Secret: "strongpass",   // Example secret/password for the message.
+			Data:   randomString(), // Generating random data for the message.
 		}
-	}
 
+		send <- data // Sending the constructed message to the server.
+		// Logging the details of the sent message for monitoring purposes.
+		log.Printf("Client sent: ID=%s, Secret=%s, Data=%s\n", data.Id, data.Secret, data.Data)
+
+		time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
+	}
+}
+
+// randomString generates a random string of 8 characters.
+// This function is used to create varied and random data for each message sent by the client.
+func randomString() string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	// Creating a random string of 8 characters from the letters slice.
+	s := make([]rune, 8)
+	for i := range s {
+		s[i] = letters[rand.Intn(len(letters))] // Randomly picking a character.
+	}
+	return string(s) // Converting the rune slice to a string.
 }
