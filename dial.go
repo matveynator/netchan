@@ -25,8 +25,8 @@ func Dial(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType,
 	// receiveChan is a buffered channel for receiving data of type NetChanType.
 	receiveChan = make(chan NetChanType, 100000)
 
-	// Initialize respawnLock to control dial worker spawning.
-	respawnLock = make(chan int, 10)
+	// Initialize non-buffered (=1) respawnLock to control dial worker spawning.
+	respawnLock = make(chan int, 1)
 
 	// Goroutine for continuously spawning dial workers to handle network tasks.
 	// It limits the number of active workers to 1 to avoid overloading.
