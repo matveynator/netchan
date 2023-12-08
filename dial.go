@@ -55,7 +55,6 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan NetChanType, receive
 	}()
 
 	log.Printf("Dial worker #%d connected to destination %s", dialerId, addr)
-
 	handleConnection(conn, sendChan, receiveChan)
 
 }

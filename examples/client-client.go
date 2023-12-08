@@ -41,7 +41,7 @@ func server() {
 	for {
 		select {
 		case message := <-receive:
-			log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			log.Printf("Server received: %v\n", message)
 			send <- message // Echoing the received message back to the client.
 
 		default:
@@ -65,14 +65,14 @@ func client() {
 		for {
 			// Constructing a message with a random string as data.
 			data := netchan.NetChanType{
-				Id:     "1",            // Static ID for the message.
-				Secret: "strongpass",   // Example secret/password for the message.
-				Data:   randomString(), // Generating random data for the message.
+				ChanName: "Name",  
+				ChanData: "Data",
+				SessionSecret: randomString(),
 			}
 
 			send <- data // Sending the constructed message to the server.
 			// Logging the details of the sent message for monitoring purposes.
-			log.Printf("Client sent: ID=%s, Secret=%s, Data=%s\n", data.Id, data.Secret, data.Data)
+			log.Printf("Client sent: %v\n", data)
 
 			time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
 		}
@@ -81,7 +81,7 @@ func client() {
 	for {
 		select {
 		case message := <-receive:
-			log.Printf("Client received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			log.Printf("Client received: %v\n", message)
 		default:
 			time.Sleep(1 * time.Second)
 		}

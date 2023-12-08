@@ -34,15 +34,21 @@ func handleConnection(conn net.Conn, send chan NetChanType, receive chan NetChan
 				log.Println("Exiting due to SEND channel closed.")
 				return
 			}
+			if message.To != "" {
+				message.From = message.To
+				message.To = conn.RemoteAddr().String()
+			} else {
+				message.To = conn.RemoteAddr().String()
+			}
 			sendingErr := encoder.Encode(message)
 			if sendingErr != nil {
 				send <- message
 				log.Printf("Re-queue sending data as sending failed with error: %s\n", sendingErr)
 			}
-			log.Printf("SENT message via channel: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			log.Printf("SENT message via channel: %v\n", message)
 
 		case networkError := <-connectionErrorChannel:
-			log.Printf("Listen worker exited due to connection error: %s\n", networkError)
+			log.Printf("Netchan handle connection worker exited due to connection error: %s\n", networkError)
 			return
 
 		default:

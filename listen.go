@@ -34,7 +34,7 @@ func Listen(addr string) (sendChan chan NetChanType, receiveChan chan NetChanTyp
 					log.Printf("Failed to accept connection: %v", err)
 					continue
 				}
-
+				//сообщаяем адрес с которого подключился клиент в канал iceChan
 				go handleConnection(conn, sendChan, receiveChan)
 			}
 		}
