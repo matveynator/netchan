@@ -26,99 +26,57 @@ func Dial(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType,
 	receiveChan = make(chan NetChanType, 100000)
 
 	// Initialize respawnLock to control dial worker spawning.
-	respawnLock = make(chan int, 1)
+	respawnLock = make(chan int, 10)
 
 	// Goroutine for continuously spawning dial workers to handle network tasks.
 	// It limits the number of active workers to 1 to avoid overloading.
 	go func() {
+		dialerId := 1
 		for {
 			respawnLock <- 1            // Occupy the semaphore, blocking further spawns.
 			time.Sleep(1 * time.Second) // Wait for 1 second before next iteration.
-			go dialWorkerRun(len(respawnLock), addr, sendChan, receiveChan)
+			go dialWorkerRun(dialerId, addr, sendChan, receiveChan)
+			dialerId++
 		}
 	}()
 	return
 }
 
-// cleanupConnection closes the given network connection and logs any errors.
-func cleanupConnection(connection net.Conn) {
-	// Only attempt to close the connection if it's not nil.
-	if connection != nil {
-		err := connection.Close()
-		if err != nil {
-			// Log errors encountered during connection closure.
-			log.Println("Error closing dial connection:", err)
-		}
-	}
-}
-
 // dialWorkerRun manages a single worker for dialing and network communications.
 // It handles tasks like connection establishment, data transmission, and error management.
-func dialWorkerRun(workerId int, addr string, sendChan chan NetChanType, receiveChan chan NetChanType) {
-	// Release a token from respawnLock upon exiting this function.
-	defer func() { <-respawnLock }()
+// dialWorkerRun manages a single worker for dialing and network communications.
+func dialWorkerRun(dialerId int, addr string, sendChan chan NetChanType, receiveChan chan NetChanType) {
+	defer func() {
+		// Release a token from respawnLock upon exiting this function.
+		<-respawnLock
+	}()
 
-	// Generate TLS configuration for secure connections.
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
-		// Log and return on TLS configuration errors.
 		Printonce(fmt.Sprintf("TLS configuration error: %s", err))
 		return
 	}
 
-	// Attempt to establish a TLS connection to the specified address.
 	log.Println("Attempting to connect to server:", addr)
 	dialer := net.Dialer{Timeout: time.Second * 15}
 	connection, err := tls.DialWithDialer(&dialer, "tcp", addr, tlsConfig)
 	if err != nil {
-		// Log and return if the connection fails.
 		Printonce(fmt.Sprintf("Dial destination %s unreachable. Error: %s", addr, err))
 		return
-	} else {
-		// Log successful connection establishment.
-		Println(fmt.Sprintf("Dial worker #%d connected to destination %s", workerId, addr))
 	}
-	// Ensure the connection is closed when the function exits.
-	defer cleanupConnection(connection)
-
-	// connectionErrorChannel communicates any errors encountered during connection.
-	connectionErrorChannel := make(chan error)
-
-	// Goroutine for reading data from the connection and handling errors.
-	go func() {
-		// Buffer to store data read from the connection.
-		buffer := make([]byte, 1024)
-		for {
-			// Read data into the buffer.
-			numberOfLines, err := connection.Read(buffer)
+	defer func() {
+		if connection != nil {
+			err := connection.Close()
 			if err != nil {
-				// Send encountered errors to the connectionErrorChannel.
-				connectionErrorChannel <- err
-				return
-			}
-			// Log unexpected data received.
-			if numberOfLines > 0 {
-				log.Printf("Dial worker received unexpected data back: %s", buffer[:numberOfLines])
+				log.Println("Error closing dial connection:", err)
 			}
 		}
 	}()
 
-	// Main loop to handle outgoing data and network errors.
+	log.Printf("Dial worker #%d connected to destination %s", dialerId, addr)
+
+	// Use handleConnection to manage the established connection.
+	go handleConnection(connection, sendChan, receiveChan)
 	for {
-		select {
-		case currentsendChan := <-sendChan:
-			// Attempt to send data over the network, re-queue on error.
-			_, networkSendingError := fmt.Fprintf(connection, "%s, %s, %s\n", currentsendChan.Id, currentsendChan.Secret, currentsendChan.Data)
-			if err != nil {
-				// Re-queue the data and log the error if sending fails.
-				sendChan <- currentsendChan
-				log.Printf("Dial worker %d exited due to sending error: %s\n", workerId, networkSendingError)
-				return
-			}
-		case networkError := <-connectionErrorChannel:
-			// Handle network errors and terminate the goroutine.
-			log.Printf("Dial worker %d exited due to connection error: %s\n", workerId, networkError)
-			return
-		}
 	}
 }

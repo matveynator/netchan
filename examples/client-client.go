@@ -32,11 +32,18 @@ func server() {
 		log.Fatal(err) // If an error occurs, log it and terminate the application.
 	}
 
-	// Continuously processing incoming messages from the client.
-	for message := range receive {
-		// Logging each received message's details for monitoring.
-		log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
-		send <- message // Echoing the received message back to the client.
+	for {
+		select {
+		case message := <-receive:
+			log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+
+			message.Id = "2"
+			message.Secret = "secret2"
+			send <- message // Echoing the received message back to the client.
+
+		default:
+			time.Sleep(10 * time.Second)
+		}
 	}
 }
 
@@ -44,27 +51,43 @@ func server() {
 // It periodically sends random messages to the server.
 func client() {
 	// Creating a network channel to send messages to the server.
-	send, _, err := netchan.Dial("127.0.0.1:9999")
+	send, receive, err := netchan.Dial("127.0.0.1:9999")
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 		return
 	}
 
-	// Sending messages at regular intervals in an infinite loop.
-	for {
-		// Constructing a message with a random string as data.
-		data := netchan.NetChanType{
-			Id:     "1",            // Static ID for the message.
-			Secret: "strongpass",   // Example secret/password for the message.
-			Data:   randomString(), // Generating random data for the message.
+	//send random message every 3 seconds:
+	go func() {
+		// Sending messages at regular intervals in an infinite loop.
+		for {
+			// Constructing a message with a random string as data.
+			data := netchan.NetChanType{
+				Id:     "1",            // Static ID for the message.
+				Secret: "strongpass",   // Example secret/password for the message.
+				Data:   randomString(), // Generating random data for the message.
+			}
+
+			send <- data // Sending the constructed message to the server.
+			// Logging the details of the sent message for monitoring purposes.
+			log.Printf("Client sent: ID=%s, Secret=%s, Data=%s\n", data.Id, data.Secret, data.Data)
+
+			time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
 		}
+	}()
 
-		send <- data // Sending the constructed message to the server.
-		// Logging the details of the sent message for monitoring purposes.
-		log.Printf("Client sent: ID=%s, Secret=%s, Data=%s\n", data.Id, data.Secret, data.Data)
+	for {
+		select {
+		case message := <-receive:
+			log.Printf("Client received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+			//echo message back
+			send <- message
 
-		time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
+		default:
+			time.Sleep(10 * time.Second)
+		}
 	}
+
 }
 
 // randomString generates a random string of 8 characters.
