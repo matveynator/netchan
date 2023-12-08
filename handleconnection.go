@@ -40,12 +40,12 @@ func handleConnection(conn net.Conn, send chan NetChanType, receive chan NetChan
 	for {
 		select {
 
-		case message, ok := <-receive:
-			if !ok {
-				log.Println("Exiting due to RECEIVE channel closed.")
-				return
-			}
-			log.Printf("RECEIVED message via channel: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
+//		case message, ok := <-receive:
+//			if !ok {
+//				log.Println("Exiting due to RECEIVE channel closed.")
+//				return
+//			}
+//			log.Printf("RECEIVED message via channel: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
 
 		case message, ok := <-send:
 			if !ok {
