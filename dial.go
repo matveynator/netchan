@@ -5,12 +5,13 @@
 package netchan
 
 import (
-	"crypto/tls" // Package tls provides implementations of the TLS network security protocol.
-	"fmt"        // Package fmt implements formatted I/O with functions analogous to C's printf and scanf.
-	"log"        // Package log provides a simple logging package.
-	"net"        // Package net provides a portable interface for network I/O, including TCP/IP, UDP, domain name resolution, and Unix domain sockets.
-	"time"       // Package time provides functionality for measuring and displaying time.
+  "crypto/tls"
+  "fmt"
+  "log"
+	"net"
+  "time"
 )
+
 
 // respawnLock is a semaphore-like channel used to control the spawning of dial workers.
 // It ensures that only one dial worker is active at any given time.
@@ -59,14 +60,14 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan NetChanType, receive
 
 	log.Println("Attempting to connect to server:", addr)
 	dialer := net.Dialer{Timeout: time.Second * 15}
-	connection, err := tls.DialWithDialer(&dialer, "tcp", addr, tlsConfig)
+	conn, err := tls.DialWithDialer(&dialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		Printonce(fmt.Sprintf("Dial destination %s unreachable. Error: %s", addr, err))
 		return
 	}
 	defer func() {
-		if connection != nil {
-			err := connection.Close()
+		if conn != nil {
+			err := conn.Close()
 			if err != nil {
 				log.Println("Error closing dial connection:", err)
 			}
@@ -76,7 +77,6 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan NetChanType, receive
 	log.Printf("Dial worker #%d connected to destination %s", dialerId, addr)
 
 	// Use handleConnection to manage the established connection.
-	go handleConnection(connection, sendChan, receiveChan)
-	for {
-	}
+	handleConnection(conn, sendChan, receiveChan)
+
 }
