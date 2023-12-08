@@ -14,14 +14,14 @@ import (
 // and the client as separate goroutines, allowing them to operate simultaneously.
 func main() {
 	go client() // Launch client as a goroutine.
-  go server() // Launch server as a goroutine.
+	go server() // Launch server as a goroutine.
 
 	// This select statement keeps the main goroutine alive indefinitely.
 	// It's necessary as the application should continue running to support
 	// the server and client goroutines.
 	for {
 		time.Sleep(1 * time.Second)
-//		log.Println("Main loop sleeping...")
+		//		log.Println("Main loop sleeping...")
 	}
 }
 
@@ -30,9 +30,9 @@ func main() {
 func server() {
 	// Establishing a network channel to receive and send messages.
 	// This channel will be used for communication with the client.
-//	log.Println(11111)
+	//	log.Println(11111)
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
-//  log.Println(22222)
+	//  log.Println(22222)
 	if err != nil {
 		log.Fatal(err) // If an error occurs, log it and terminate the application.
 		return
@@ -42,8 +42,7 @@ func server() {
 		select {
 		case message := <-receive:
 			log.Printf("Server received: ID=%s, Secret=%s, Data=%s\n", message.Id, message.Secret, message.Data)
-//			log.Println("Echoing server message back...")
-//			send <- message // Echoing the received message back to the client.
+			send <- message // Echoing the received message back to the client.
 
 		default:
 			time.Sleep(1 * time.Second)

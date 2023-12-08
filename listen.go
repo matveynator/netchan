@@ -16,7 +16,6 @@ func Listen(addr string) (sendChan chan NetChanType, receiveChan chan NetChanTyp
 		return
 	}
 
-	// Запускаем горутину для прослушивания и обработки соединений
 	go func() {
 		for {
 			listener, err := tls.Listen("tcp", addr, tlsConfig)
@@ -41,7 +40,5 @@ func Listen(addr string) (sendChan chan NetChanType, receiveChan chan NetChanTyp
 		}
 	}()
 
-	// Возвращаем каналы, ошибка уже обработана выше
 	return sendChan, receiveChan, nil
 }
-
