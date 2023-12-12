@@ -64,11 +64,15 @@ func client() {
 		// Sending messages at regular intervals in an infinite loop.
 		for {
 			// Constructing a message with a random string as data.
-			data := netchan.NetChanType{
-				ChanName: "Name",  
-				ChanData: "Data",
-				SessionSecret: randomString(),
-			}
+			data := netchan.Message{}
+
+			//data := netchan.Message{
+			//	Payload: "Hello",
+			//	Secret: randomString(),
+			//}
+			data.Payload = "Hello"
+			data.Secret = randomString()
+			data.To = "127.0.0.1:9999"
 
 			send <- data // Sending the constructed message to the server.
 			// Logging the details of the sent message for monitoring purposes.
@@ -95,7 +99,7 @@ func randomString() string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 	// Creating a random string of 8 characters from the letters slice.
-	s := make([]rune, 8)
+	s := make([]rune, 5)
 	for i := range s {
 		s[i] = letters[rand.Intn(len(letters))] // Randomly picking a character.
 	}

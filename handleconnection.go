@@ -7,23 +7,24 @@ import (
 	"time"
 )
 
-func handleConnection(conn net.Conn, send chan NetChanType, receive chan NetChanType) {
+func handleConnection(conn net.Conn, send chan Message, receive chan Message) {
 	defer conn.Close()
 
 	connectionErrorChannel := make(chan error, 1000)
+
 	decoder := gob.NewDecoder(conn)
 	encoder := gob.NewEncoder(conn)
 
 	go func() {
 		for {
-			var netChanMsg NetChanType
-			err := decoder.Decode(&netChanMsg)
+			var msg Message
+			err := decoder.Decode(&msg)
 			if err != nil {
 				connectionErrorChannel <- err
 				log.Printf("Error while decoding: %s", err)
 				return
 			}
-			receive <- netChanMsg
+			receive <- msg
 		}
 	}()
 

@@ -10,9 +10,9 @@ import (
 
 var respawnLock chan int
 
-func Dial(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType, err error) {
-	sendChan = make(chan NetChanType, 100000)
-	receiveChan = make(chan NetChanType, 100000)
+func Dial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+	sendChan = make(chan Message, 100000)
+	receiveChan = make(chan Message, 100000)
 	respawnLock = make(chan int, 1)
 
 	go func() {
@@ -27,7 +27,7 @@ func Dial(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType,
 	return
 }
 
-func dialWorkerRun(dialerId int, addr string, sendChan chan NetChanType, receiveChan chan NetChanType) {
+func dialWorkerRun(dialerId int, addr string, sendChan chan Message, receiveChan chan Message) {
 	defer func() {
 		<-respawnLock
 	}()

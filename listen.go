@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func Listen(addr string) (sendChan chan NetChanType, receiveChan chan NetChanType, err error) {
-	sendChan = make(chan NetChanType, 100000)
-	receiveChan = make(chan NetChanType, 100000)
+func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+	sendChan = make(chan Message, 100000)
+	receiveChan = make(chan Message, 100000)
 
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
