@@ -24,6 +24,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message) {
 				log.Printf("Error while decoding: %s", err)
 				return
 			}
+			msg.From = conn.RemoteAddr().String()
 			receive <- msg
 		}
 	}()
@@ -35,12 +36,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message) {
 				log.Println("Exiting due to SEND channel closed.")
 				return
 			}
-			if message.To != "" {
-				message.From = message.To
-				message.To = conn.RemoteAddr().String()
-			} else {
-				message.To = conn.RemoteAddr().String()
-			}
+			
 			sendingErr := encoder.Encode(message)
 			if sendingErr != nil {
 				send <- message
