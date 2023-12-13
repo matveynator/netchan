@@ -16,7 +16,7 @@ func main() {
 	go server() // Launch server as a goroutine.
 	go client() // Launch client as a goroutine.
 	go client() // Launch client as a goroutine.
-        go client()
+	go client()
 
 	// This select statement keeps the main goroutine alive indefinitely.
 	// It's necessary as the application should continue running to support
@@ -43,12 +43,11 @@ func server() {
 		case message := <-receive:
 			log.Printf("Server received: %v\n", message)
 
-
-                        // Echoing the received message back to the client.
-                        myAddress := message.To
-                        message.To = message.From
-                        message.From = myAddress
-			send <- message 
+			// Echoing the received message back to the client.
+			myAddress := message.To
+			message.To = message.From
+			message.From = myAddress
+			send <- message
 
 		}
 	}

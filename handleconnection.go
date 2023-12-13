@@ -9,10 +9,10 @@ import (
 
 func handleConnection(conn net.Conn, send chan Message, receive chan Message, clientDisconnectNotifyChan chan string) {
 
-        defer func() {
-          clientDisconnectNotifyChan <- conn.RemoteAddr().String()
-          conn.Close()
-        }()
+	defer func() {
+		clientDisconnectNotifyChan <- conn.RemoteAddr().String()
+		conn.Close()
+	}()
 
 	connectionErrorChannel := make(chan error, 1000)
 
@@ -40,7 +40,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 				log.Println("Exiting due to SEND channel closed.")
 				return
 			}
-			
+
 			sendingErr := encoder.Encode(message)
 			if sendingErr != nil {
 				send <- message
