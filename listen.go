@@ -7,16 +7,16 @@ import (
   "time"
 )
 
-func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
 
   sendChan = make(chan Message, 100000)
   receiveChan = make(chan Message, 100000)
 
-  type adressBook struct {
+  type addressBook struct {
     Send    chan Message
   }
 
-  addressBookMap := make(map[string]adressBook)
+  addressBookMap := make(map[string]addressBook)
 
   tlsConfig, err := generateTLSConfig()
   if err != nil {
@@ -38,7 +38,7 @@ func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err e
             select {
             case message := <- sendChan:
               if adressbook, ok := addressBookMap[message.To]; ok {
-                //пересылаем сообщение аддресату
+                //пересылаем сообщение адресату
                 adressbook.Send <- message
               } else {
                 log.Printf("Address %s not found in addressbook, returning message back sender via RECEIVE channel.", message.To)
@@ -72,7 +72,7 @@ func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err e
             clientAddress := conn.RemoteAddr().String()
 
             // Добавление новой записи в карту
-            addressBookMap[clientAddress] = adressBook{Send: sendToClient}
+            addressBookMap[clientAddress] = addressBook{Send: sendToClient}
 
             go handleConnection(conn, sendToClient, receiveChan, clientDisconnectNotifyChan)
           }
@@ -84,3 +84,48 @@ func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err e
   return sendChan, receiveChan, nil
 }
 
+// server function manages the server-side operations of the application.
+// It continuously listens for incoming messages and sends back echo responses.
+func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
+
+  dispatcherSend = make(chan interface{}, 100000)
+  dispatcherReceive = make(chan interface{}, 100000)
+
+  // Объявляем канал хранения адресов клиентов которые готовы принять задачу/сообщение
+  var readyClientsAddressList = make(chan string, 100000)
+
+  // Establishing a network channel to receive and send messages.
+  // This channel will be used for communication with the clients.
+  send, receive, err := NetChanListen(address)
+  if err != nil {
+    log.Fatal(err) // If an error occurs, log it and terminate the application.
+    return
+  } else {
+    //sending messages to clients who are ready to receive them (from the list of ready clients one per message)
+    go func() {
+      for {
+        select {
+        case payload:= <-dispatcherSend:
+          data := Message{}
+          data.Payload = payload
+          data.To = <-readyClientsAddressList
+          send <- data // Sending the constructed message to client who is ready to receive connection.
+        }
+      }
+    }()
+
+    go func() {
+      for {
+        select {
+        case data := <-receive:
+          if data.Payload == nil {
+            readyClientsAddressList <- data.From
+          } else {
+            dispatcherReceive <- data.Payload // Sending the simple message to the server from client.
+          } 
+        }
+      }
+    }()
+  }
+  return
+}
