@@ -57,39 +57,35 @@ func server() {
 
 // client function handles the client-side operations of the application.
 // It periodically sends random messages to the server.
-func client() {
+func dial_dispatcher(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
 	// Creating a network channel to send messages to the server.
-	send, receive, err := netchan.Dial("127.0.0.1:9999")
+	send, receive, err := netchan.Dial(address)
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 	}
 
-	//send random message every 3 seconds:
-	go func() {
-		// Sending messages at regular intervals in an infinite loop.
-		for {
-			// Constructing a message with a random string as data.
-			data := netchan.Message{}
+        go func() {
+          for {
+            select
+              case payload:= <-dispatcherSend:
+                data := netchan.Message{}
+                data.Payload = payload
+                data.To = address
+                send <- data // Sending the constructed message to the server.
+          }   
+        }
 
-			data.Payload = "Hello"
-			data.Secret = randomString()
-			data.To = "127.0.0.1:9999"
+        go func() {
+          for {
+            select
+              case data := <-receive:
+                dispatcherReceive <- data.Payload // Sending the constructed message to the server.
+          }
+        }
 
-			send <- data // Sending the constructed message to the server.
-			// Logging the details of the sent message for monitoring purposes.
-			log.Printf("Client sent: %v\n", data)
-
-			time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
-		}
-	}()
-
-	for {
-		select {
-		case message := <-receive:
-			log.Printf("Client received: %v\n", message)
-		}
-	}
-
+        //sleep forever
+        for {
+        }
 }
 
 // randomString generates a random string of 8 characters.

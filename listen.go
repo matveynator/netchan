@@ -33,16 +33,16 @@ func Listen(addr string) (sendChan chan Message, receiveChan chan Message, err e
       } else {
         defer listener.Close()
 
-
         go func() {
           for {
             select {
             case message := <- sendChan:
               if adressbook, ok := addressBookMap[message.To]; ok {
+                //пересылаем сообщение аддресату
                 adressbook.Send <- message
               } else {
-                log.Printf("Address %s not found, returned message back to SEND queue.", message.To)
-                sendChan <- message
+                log.Printf("Address %s not found in addressbook, returning message back sender via RECEIVE channel.", message.To)
+                receiveChan <- message
               }
             }
           }

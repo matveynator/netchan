@@ -10,7 +10,7 @@ import (
 
 var respawnLock chan int
 
-func Dial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+func NetChanDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
   sendChan = make(chan Message, 100000)
   receiveChan = make(chan Message, 100000)
   respawnLock = make(chan int, 1)
@@ -75,4 +75,42 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan Message, receiveChan
     log.Printf("Dial worker #%d connected to destination %s", dialerId, addr)
     handleConnection(conn, sendChan, receiveChan, clientDisconnectNotifyChan)
   }
+}
+
+
+func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
+
+  dispatcherSend = make(chan interface{}, 100000)
+  dispatcherReceive = make(chan interface{}, 100000)
+
+  // Creating a network channel to send messages to the server.
+  send, receive, err := NetChanDial(address)
+  if err != nil {
+    log.Println(err) // Log the error but do not terminate; the server might still be starting.
+  } else {
+
+    go func() {
+      for {
+        select {
+        case payload:= <-dispatcherSend:
+          data := Message{}
+          data.Payload = payload
+          data.To = address
+          send <- data // Sending the constructed message to the server.
+        }
+      }
+    }()
+
+    go func() {
+      for {
+        select {
+        case data := <-receive:
+          dispatcherReceive <- data.Payload // Sending the constructed message to the server.
+        }
+      }
+    }()
+  }
+
+  log.Println("dial finished")
+  return
 }
