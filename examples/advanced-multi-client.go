@@ -13,8 +13,10 @@ import (
 // main is the entry point of the application. It concurrently starts the server
 // and the client as separate goroutines, allowing them to operate simultaneously.
 func main() {
-	go client() // Launch client as a goroutine.
 	go server() // Launch server as a goroutine.
+	go client() // Launch client as a goroutine.
+	go client() // Launch client as a goroutine.
+        go client()
 
 	// This select statement keeps the main goroutine alive indefinitely.
 	// It's necessary as the application should continue running to support
@@ -30,9 +32,7 @@ func main() {
 func server() {
 	// Establishing a network channel to receive and send messages.
 	// This channel will be used for communication with the client.
-	//	log.Println(11111)
-	send, receive, err := netchan.Listen("127.0.0.1:9999")
-	//  log.Println(22222)
+	send, receive, err := netchan.NetChanListen("127.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err) // If an error occurs, log it and terminate the application.
 		return
@@ -42,10 +42,14 @@ func server() {
 		select {
 		case message := <-receive:
 			log.Printf("Server received: %v\n", message)
-			send <- message // Echoing the received message back to the client.
 
-		default:
-			time.Sleep(1 * time.Second)
+
+                        // Echoing the received message back to the client.
+                        myAddress := message.To
+                        message.To = message.From
+                        message.From = myAddress
+			send <- message 
+
 		}
 	}
 }
@@ -54,7 +58,7 @@ func server() {
 // It periodically sends random messages to the server.
 func client() {
 	// Creating a network channel to send messages to the server.
-	send, receive, err := netchan.Dial("127.0.0.1:9999")
+	send, receive, err := netchan.NetChanDial("127.0.0.1:9999")
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 	}
@@ -66,12 +70,7 @@ func client() {
 			// Constructing a message with a random string as data.
 			data := netchan.Message{}
 
-			//data := netchan.Message{
-			//	Payload: "Hello",
-			//	Secret: randomString(),
-			//}
-			data.Payload = "Hello"
-			data.Secret = randomString()
+			data.Payload = randomString()
 			data.To = "127.0.0.1:9999"
 
 			send <- data // Sending the constructed message to the server.
@@ -86,8 +85,6 @@ func client() {
 		select {
 		case message := <-receive:
 			log.Printf("Client received: %v\n", message)
-		default:
-			time.Sleep(1 * time.Second)
 		}
 	}
 

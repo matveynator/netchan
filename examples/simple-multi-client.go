@@ -17,6 +17,7 @@ func main() {
 
   go client() // Launch client as a goroutine.
   go client() // Launch client as a goroutine.
+  go client() 
 
   for {
     time.Sleep(1 * time.Second)
@@ -28,42 +29,59 @@ func main() {
 func server() {
   send, receive, err := netchan.Listen("127.0.0.1:9999")
   if err != nil {
-    log.Println(err) // If an error occurs, log it and terminate the application.
+    log.Println(err) 
     return
-  }
+  } else {
 
-  for {
-    select {
-    case message := <-receive:
-      log.Printf("Server received: %v\n", message)
-      // Resending received message to any ready client.
-      send <- message 
-    }
+    //receiving and sendin back goroutine
+    go func() {
+      for {
+        select {
+        case message := <-receive:
+          log.Printf("Server received: %v\n", message)
+          // Resending received message to any ready client.
+          send <- message 
+        }
+      }
+    }()
+
+    //loop
+    for{}
   }
 }
 
 func client() {
   send, receive, err := netchan.Dial("127.0.0.1:9999")
+
   if err != nil {
-    log.Println(err) // Log the error but do not terminate; the server might still be starting.
+    log.Println(err) 
+    return
+  } else {
+
+    //sending goroutine
+    go func() {
+      for {
+        randomString := randomString()
+        send <- randomString
+        log.Printf("Client sent: %s\n", randomString )
+        time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
+      }
+    }()
+
+    //receiving goroutine
+    go func() {
+      for {
+        select {
+        case message := <-receive:
+          log.Printf("Client received: %v\n", message)
+        }
+      }
+    }()
+
+    //loop
+    for {}
+
   }
-
-  go func() {
-    for {
-      randomString := randomString()
-      send <- randomString
-      log.Printf("Client sent: %s\n", randomString )
-      time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
-    }
-  }()
-
-  for {
-    select {
-    case message := <-receive:
-      log.Printf("Client received: %v\n", message)
-    }
-  }
-
 }
 
 func randomString() string {
