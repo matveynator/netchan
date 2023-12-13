@@ -9,8 +9,8 @@ import (
 
 func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
 
-  sendChan = make(chan Message, 100000)
-  receiveChan = make(chan Message, 100000)
+  sendChan = make(chan Message, 10000)
+  receiveChan = make(chan Message, 10000)
 
   type addressBook struct {
     Send    chan Message
@@ -50,7 +50,7 @@ func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message
 
         log.Printf("Listening on %s\n", addr)
 
-        clientDisconnectNotifyChan := make(chan string, 100000)
+        clientDisconnectNotifyChan := make(chan string, 10000)
 
         go func() {
           for {
@@ -68,7 +68,7 @@ func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message
             log.Printf("Failed to accept connection: %v", err)
             continue
           } else {
-            sendToClient := make(chan Message, 100000)
+            sendToClient := make(chan Message, 10000)
             clientAddress := conn.RemoteAddr().String()
 
             // Добавление новой записи в карту
@@ -88,11 +88,11 @@ func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message
 // It continuously listens for incoming messages and sends back echo responses.
 func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
 
-  dispatcherSend = make(chan interface{}, 100000)
-  dispatcherReceive = make(chan interface{}, 100000)
+  dispatcherSend = make(chan interface{}, 10000)
+  dispatcherReceive = make(chan interface{}, 10000)
 
   // Объявляем канал хранения адресов клиентов которые готовы принять задачу/сообщение
-  var readyClientsAddressList = make(chan string, 100000)
+  var readyClientsAddressList = make(chan string, 10000)
 
   // Establishing a network channel to receive and send messages.
   // This channel will be used for communication with the clients.

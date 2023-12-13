@@ -46,7 +46,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 				send <- message
 				log.Printf("Re-queue sending data as sending failed with error: %s\n", sendingErr)
 			}
-			log.Printf("SENT message via channel: %v\n", message)
+			//log.Printf("SENT message via channel: %v\n", message)
 
 		case networkError := <-connectionErrorChannel:
 			log.Printf("Netchan handle connection worker exited due to connection error: %s\n", networkError)

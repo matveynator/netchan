@@ -11,23 +11,21 @@ import (
 var respawnLock chan int
 
 func NetChanDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
-  sendChan = make(chan Message, 1000)
-  receiveChan = make(chan Message, 1000)
+  sendChan = make(chan Message, 10000)
+  receiveChan = make(chan Message, 10000)
   respawnLock = make(chan int, 1)
 
   go func() {
-    dialerId := 1
     for {
       respawnLock <- 1
       time.Sleep(1 * time.Second)
-      go dialWorkerRun(dialerId, addr, sendChan, receiveChan)
-      dialerId++
+      go dialWorkerRun(addr, sendChan, receiveChan)
     }
   }()
   return
 }
 
-func dialWorkerRun(dialerId int, addr string, sendChan chan Message, receiveChan chan Message) {
+func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message) {
   defer func() {
     <-respawnLock
   }()
@@ -72,7 +70,7 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan Message, receiveChan
       }
     }()
 
-    log.Printf("Dial worker #%d connected to destination %s", dialerId, addr)
+    log.Printf("Dial worker connected to destination %s", addr)
     handleConnection(conn, sendChan, receiveChan, clientDisconnectNotifyChan)
   }
 }
@@ -80,8 +78,8 @@ func dialWorkerRun(dialerId int, addr string, sendChan chan Message, receiveChan
 
 func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
 
-  dispatcherSend = make(chan interface{}, 1000)
-  dispatcherReceive = make(chan interface{}, 1000)
+  dispatcherSend = make(chan interface{}, 10000)
+  dispatcherReceive = make(chan interface{}, 10000)
 
   // Creating a network channel to send messages to the server.
   send, receive, err := NetChanDial(address)
@@ -103,24 +101,17 @@ func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive ch
 
     go func() {
 
+      readyToReceive := Message{}
+      readyToReceive.To = address
 
-      readyToReceive := true
+      send <- readyToReceive
+
 
       for {
         select {
         case data := <-receive:
+          send <- readyToReceive
           dispatcherReceive <- data.Payload // Sending the constructed message to the client.
-          readyToReceive = true 
-
-        default:
-          //нотифицировать сервер что мы готовы принять данные
-          if len(dispatcherReceive) == 0  && readyToReceive == true {
-            //Клиент готов принять новые данные
-            data := Message{}
-            data.To = address
-            send <- data // Sending the constructed message to the server.
-            readyToReceive = false
-          }
         }
       }
     }()
