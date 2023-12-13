@@ -7,8 +7,12 @@ import (
 	"time"
 )
 
-func handleConnection(conn net.Conn, send chan Message, receive chan Message) {
-	defer conn.Close()
+func handleConnection(conn net.Conn, send chan Message, receive chan Message, clientDisconnectNotifyChan chan string) {
+
+        defer func() {
+          clientDisconnectNotifyChan <- conn.RemoteAddr().String()
+          conn.Close()
+        }()
 
 	connectionErrorChannel := make(chan error, 1000)
 

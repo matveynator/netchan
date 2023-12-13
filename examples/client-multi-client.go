@@ -43,7 +43,13 @@ func server() {
 		select {
 		case message := <-receive:
 			log.Printf("Server received: %v\n", message)
-			send <- message // Echoing the received message back to the client.
+
+
+                        // Echoing the received message back to the client.
+                        myAddress := message.To
+                        message.To = message.From
+                        message.From = myAddress
+			send <- message 
 
 		default:
 			time.Sleep(1 * time.Second)
