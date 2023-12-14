@@ -10,7 +10,7 @@ import (
 
 var respawnLock chan int
 
-func NetChanDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
 	sendChan = make(chan Message, 10000)
 	receiveChan = make(chan Message, 10000)
 	respawnLock = make(chan int, 1)
@@ -81,7 +81,7 @@ func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive ch
 	dispatcherReceive = make(chan interface{}, 10000)
 
 	// Creating a network channel to send messages to the server.
-	send, receive, err := NetChanDial(address)
+	send, receive, err := AdvancedDial(address)
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 	} else {

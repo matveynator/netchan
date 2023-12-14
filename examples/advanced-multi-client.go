@@ -32,7 +32,7 @@ func main() {
 func server() {
 	// Establishing a network channel to receive and send messages.
 	// This channel will be used for communication with the client.
-	send, receive, err := netchan.NetChanListen("127.0.0.1:9999")
+	send, receive, err := netchan.AdvancedListen("127.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err) // If an error occurs, log it and terminate the application.
 		return
@@ -48,7 +48,6 @@ func server() {
 			message.To = message.From
 			message.From = myAddress
 			send <- message
-
 		}
 	}
 }
@@ -57,7 +56,7 @@ func server() {
 // It periodically sends random messages to the server.
 func client() {
 	// Creating a network channel to send messages to the server.
-	send, receive, err := netchan.NetChanDial("127.0.0.1:9999")
+	send, receive, err := netchan.AdvancedDial("127.0.0.1:9999")
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 	}

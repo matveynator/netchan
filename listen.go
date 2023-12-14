@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func NetChanListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
 
 	sendChan = make(chan Message, 10000)
 	receiveChan = make(chan Message, 10000)
@@ -92,11 +92,11 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 	dispatcherReceive = make(chan interface{}, 10000)
 
 	// Объявляем канал хранения адресов клиентов которые готовы принять задачу/сообщение
-	var readyClientsAddressList = make(chan string, 10000)
+	var ReadyClientsAddressList = make(chan string, 10000)
 
 	// Establishing a network channel to receive and send messages.
 	// This channel will be used for communication with the clients.
-	send, receive, err := NetChanListen(address)
+	send, receive, err := AdvancedListen(address)
 	if err != nil {
 		log.Fatal(err) // If an error occurs, log it and terminate the application.
 		return
@@ -108,7 +108,7 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 				case payload := <-dispatcherSend:
 					data := Message{}
 					data.Payload = payload
-					data.To = <-readyClientsAddressList
+					data.To = <-ReadyClientsAddressList
 					send <- data // Sending the constructed message to client who is ready to receive connection.
 				}
 			}
@@ -119,7 +119,7 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 				select {
 				case data := <-receive:
 					if data.Payload == nil {
-						readyClientsAddressList <- data.From
+						ReadyClientsAddressList <- data.From
 					} else {
 						dispatcherReceive <- data.Payload // Sending the simple message to the server from client.
 					}
