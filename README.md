@@ -31,9 +31,9 @@
 
 ## Getting Started
 To embark on your journey with `netchan`, install the library using `go get`:
-```
+
 `go get -u github.com/matveynator/netchan`
-```
+
 ## Usage Example:
 
 ```
