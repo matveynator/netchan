@@ -1,102 +1,78 @@
-// Package main demonstrates the use of the netchan package for creating a simple
-// client-server application. This application includes a server and a client, where
-// the client sends random messages to the server, and the server echoes them back.
 package main
 
 import (
-	"github.com/matveynator/netchan" // netchan package for network channel functionalities.
-	"log"                            // log package for logging messages to the console.
-	"math/rand"                      // rand package for generating random data.
-	"time"                           // time package for handling time-related functionality.
+	"github.com/matveynator/netchan" // Importing the netchan package for network channel functionalities.
+	"log"                            // Importing the log package for logging messages to the console.
+	"time"                           // Importing the time package for handling time-related functionality.
 )
 
-// main is the entry point of the application. It concurrently starts the server
-// and the client as separate goroutines, allowing them to operate simultaneously.
+// main is the entry point of the program.
+// It starts server and client goroutines and keeps the application running.
 func main() {
-	go server() // Launch server as a goroutine.
-	go client() // Launch client as a goroutine.
-	go client() // Launch client as a goroutine.
-	go client()
+	go server() // Starting the server in a new goroutine.
+	go client() // Starting the first client in a new goroutine.
+	go client() // Starting the second client in a new goroutine.
 
-	// This select statement keeps the main goroutine alive indefinitely.
-	// It's necessary as the application should continue running to support
-	// the server and client goroutines.
-	for {
-		time.Sleep(1 * time.Second)
-		//		log.Println("Main loop sleeping...")
-	}
+	// Using an empty select to block the main goroutine indefinitely.
+	// This is necessary because the program should not exit to allow server and client goroutines to run.
+	select {}
 }
 
-// server function manages the server-side operations of the application.
-// It continuously listens for incoming messages and sends back echo responses.
+// server function sets up and runs the server side of the network channel.
+// It listens for messages from clients and sends back responses.
 func server() {
-	// Establishing a network channel to receive and send messages.
-	// This channel will be used for communication with the client.
+	// Initializing the network channel for server-side communication.
 	send, receive, err := netchan.AdvancedListen("127.0.0.1:9999")
 	if err != nil {
-		log.Fatal(err) // If an error occurs, log it and terminate the application.
+		log.Fatal(err) // Logging and exiting the program in case of an error.
 		return
 	}
 
+	// Running an infinite loop to listen for and handle messages.
 	for {
 		select {
 		case message := <-receive:
-			log.Printf("Server received: %v\n", message)
+			log.Printf("Server received: %v\n", message) // Logging received messages.
 
-			// Echoing the received message back to the client.
+			// Sending an echo response back to the client.
 			myAddress := message.To
 			message.To = message.From
 			message.From = myAddress
-			send <- message
+			send <- message // Sending the response.
 		}
 	}
 }
 
-// client function handles the client-side operations of the application.
-// It periodically sends random messages to the server.
+// client function sets up and runs the client side of the network channel.
+// It periodically sends messages to the server and handles responses.
 func client() {
-	// Creating a network channel to send messages to the server.
+	// Initializing the network channel for client-side communication.
 	send, receive, err := netchan.AdvancedDial("127.0.0.1:9999")
 	if err != nil {
-		log.Println(err) // Log the error but do not terminate; the server might still be starting.
+		log.Println(err) // Logging the error but continuing execution.
 	}
 
-	//send random message every 3 seconds:
+	// Launching a goroutine to send messages at regular intervals.
 	go func() {
-		// Sending messages at regular intervals in an infinite loop.
 		for {
-			// Constructing a message with a random string as data.
-			data := netchan.Message{}
+			// Creating and sending a message with a timestamp payload.
+			data := netchan.Message{
+				Payload: time.Now().UnixNano(),
+				To:      "127.0.0.1:9999",
+			}
 
-			data.Payload = randomString()
-			data.To = "127.0.0.1:9999"
+			send <- data                          // Sending the message to the server.
+			log.Printf("Client sent: %v\n", data) // Logging the sent message.
 
-			send <- data // Sending the constructed message to the server.
-			// Logging the details of the sent message for monitoring purposes.
-			log.Printf("Client sent: %v\n", data)
-
-			time.Sleep(3 * time.Second) // Pausing for 3 seconds before sending the next message.
+			time.Sleep(3 * time.Second) // Waiting for 3 seconds before sending the next message.
 		}
 	}()
 
+	// Running an infinite loop to listen for and handle responses from the server.
 	for {
 		select {
 		case message := <-receive:
-			log.Printf("Client received: %v\n", message)
+			log.Printf("Client received: %v\n", message) // Logging received messages.
 		}
 	}
-
-}
-
-// randomString generates a random string of 8 characters.
-// This function is used to create varied and random data for each message sent by the client.
-func randomString() string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-	// Creating a random string of 8 characters from the letters slice.
-	s := make([]rune, 5)
-	for i := range s {
-		s[i] = letters[rand.Intn(len(letters))] // Randomly picking a character.
-	}
-	return string(s) // Converting the rune slice to a string.
 }
