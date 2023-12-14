@@ -1,3 +1,4 @@
+// Package netchan provides a network communication framework using channels.
 package netchan
 
 import (
@@ -8,13 +9,18 @@ import (
 	"time"
 )
 
+// respawnLock is a channel used to control the spawning of dial worker routines.
 var respawnLock chan int
 
+// AdvancedDial establishes a secure TLS connection to the given address.
+// It returns two channels for sending and receiving Message structs,
+// and an error if the initial connection setup fails.
 func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
-	sendChan = make(chan Message, 10000)
-	receiveChan = make(chan Message, 10000)
+	sendChan = make(chan Message, 100000)
+	receiveChan = make(chan Message, 100000)
 	respawnLock = make(chan int, 1)
 
+	// Launches a goroutine that periodically tries to run dialWorkerRun.
 	go func() {
 		for {
 			respawnLock <- 1
@@ -25,10 +31,10 @@ func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message,
 	return
 }
 
+// dialWorkerRun handles the actual connection setup and messaging for AdvancedDial.
+// It manages the TLS connection and forwards messages between the client and server.
 func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message) {
-	defer func() {
-		<-respawnLock
-	}()
+	defer func() { <-respawnLock }()
 
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
@@ -54,6 +60,7 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 			}
 		}()
 
+		// Handles connection closure if the client disconnects.
 		go func() {
 			for {
 				select {
@@ -61,7 +68,7 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 					if address == conn.RemoteAddr().String() {
 						err := conn.Close()
 						if err != nil {
-							log.Println("Dial allready closed connection to %s.", address)
+							log.Println("Dial already closed connection to %s.", address)
 						} else {
 							log.Println("DIAL closed connection to %s.", address)
 						}
@@ -75,17 +82,19 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 	}
 }
 
+// Dial creates channels for sending and receiving data to a specified address.
+// It uses AdvancedDial to establish a network connection and then sets up
+// channels to send and receive data.
 func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
+	dispatcherSend = make(chan interface{}, 100000)
+	dispatcherReceive = make(chan interface{}, 100000)
 
-	dispatcherSend = make(chan interface{}, 10000)
-	dispatcherReceive = make(chan interface{}, 10000)
-
-	// Creating a network channel to send messages to the server.
+	// Establishes a TLS connection to the server.
 	send, receive, err := AdvancedDial(address)
 	if err != nil {
 		log.Println(err) // Log the error but do not terminate; the server might still be starting.
 	} else {
-
+		// Handles sending messages to the server.
 		go func() {
 			for {
 				select {
@@ -98,8 +107,8 @@ func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive ch
 			}
 		}()
 
+		// Handles receiving messages from the server.
 		go func() {
-
 			readyToReceive := Message{}
 			readyToReceive.To = address
 
