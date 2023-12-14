@@ -32,11 +32,73 @@
 ## Getting Started
 To embark on your journey with `netchan`, install the library using `go get`:
 ```
-go get -u github.com/matveynator/netchan
+`go get -u github.com/matveynator/netchan`
 ```
 ## Usage Example:
 
 ```
+package main
+
+import (
+  "fmt"
+  "github.com/matveynator/netchan"
+  "time"
+)
+
+func main() {
+  go server()
+
+  go client()
+  go client()
+
+  for {
+    time.Sleep(1 * time.Second)
+  }
+}
+
+// server
+func server() {
+  send, receive, err := netchan.Listen("127.0.0.1:9999")
+  if err != nil {
+    fmt.Println(err)
+  }
+
+  //receiving and sending goroutine
+  for {
+    select {
+    case message := <-receive:
+      fmt.Printf("Server received: %s\n", message)
+      //Returning received message to any ready client.
+      send <- message
+    }
+  }
+}
+
+func client() {
+  send, receive, err := netchan.Dial("127.0.0.1:9999")
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
+
+  //sending goroutine
+  go func() {
+    for {
+      message := fmt.Sprintf("Current unixtime: %d", time.Now().UnixNano())
+      send <- message
+      fmt.Printf("Client sent: %s\n", message)
+      time.Sleep(3 * time.Second)
+    }
+  }()
+
+  //receiving goroutine
+  for {
+    select {
+    case message := <-receive:
+      fmt.Printf("Client received: %v\n", message)
+    }
+  }
+}
 ```
 
 ## Documentation
