@@ -68,9 +68,9 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 					if address == conn.RemoteAddr().String() {
 						err := conn.Close()
 						if err != nil {
-							log.Println("Dial already closed connection to %s.", address)
+							log.Printf("Dial already closed connection to %s.", address)
 						} else {
-							log.Println("DIAL closed connection to %s.", address)
+							log.Printf("DIAL closed connection to %s.", address)
 						}
 					}
 				}
