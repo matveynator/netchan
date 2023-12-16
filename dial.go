@@ -21,6 +21,9 @@ func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message,
 	sendChan = make(chan Message, 1000)
 	receiveChan = make(chan Message, 1000)
 
+	// A channel to signal successful connection
+	connected := make(chan bool)
+
 	// Spawn only one dial connection:
 	respawnLock = make(chan int, 1)
 
@@ -29,16 +32,21 @@ func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message,
 		for {
 			respawnLock <- 1
 			time.Sleep(1 * time.Second)
-			go dialWorkerRun(addr, sendChan, receiveChan)
+			go dialWorkerRun(addr, sendChan, receiveChan, connected)
 		}
 	}()
+
+	// Wait for a successful connection signal
+	<-connected
 	return
 }
 
 // dialWorkerRun handles the actual connection setup and messaging for AdvancedDial.
 // It manages the TLS connection and forwards messages between the client and server.
-func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message) {
-	defer func() { <-respawnLock }()
+func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message, connected chan bool) {
+	defer func() {
+		<-respawnLock
+	}()
 
 	tlsConfig, err := generateTLSConfig()
 	if err != nil {
@@ -81,7 +89,11 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 			}
 		}()
 
+		// If connection is successful, send a signal
+		connected <- true
+
 		log.Printf("Dial worker connected to destination %s", addr)
+
 		handleConnection(conn, sendChan, receiveChan, clientDisconnectNotifyChan)
 	}
 }

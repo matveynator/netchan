@@ -15,13 +15,14 @@ var addressBookMap map[string]addressBook
 
 // Coordinator handles all addressBookMap operations.
 func addressBookManager(operation string, clientAddress string, clientSendChannel chan Message) chan Message {
-	defer func() {
-		// Unlock access to address book
-		<- accessLock
-	}()
 
 	// Lock access to address book
 	accessLock <- 1
+
+	defer func() {
+		// Unlock access to address book
+		<-accessLock
+	}()
 
 	switch operation {
 	case "add":

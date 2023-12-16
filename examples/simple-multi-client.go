@@ -18,8 +18,8 @@ func main() {
 	//start 1 server:
 	go server()
 
-	//start 50 clients:
-	respawnLock = make(chan int, 50)
+	//start 100 clients:
+	respawnLock = make(chan int, 100)
 	// Launches a goroutine that periodically tries to run dialWorkerRun.
 	go func() {
 		for {
@@ -75,8 +75,8 @@ func client() {
 			// Log message:
 			log.Printf("Client sent: %d\n", message)
 
-			// Sleep 200 Millisecond before next message:
-			time.Sleep(200 * time.Millisecond)
+			// Sleep 500 Millisecond before next message:
+			time.Sleep(500 * time.Millisecond)
 		}
 	}()
 
