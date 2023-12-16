@@ -11,6 +11,7 @@ import (
 // It returns two channels for sending and receiving messages in special netchan type, along with an error.
 // addr: The network address to listen on.
 func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
+	// Create channels with 100000 messages queue length.
 	sendChan = make(chan Message, 100000)
 	receiveChan = make(chan Message, 100000)
 
@@ -28,12 +29,13 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 		return
 	}
 
-	// Goroutine to handle incoming connections and message routing.
+	// Goroutine to handle incoming connections from clients and message routing.
 	go func() {
 		for {
 			listener, err := tls.Listen("tcp", addr, tlsConfig)
 			if err != nil {
 				Printonce(fmt.Sprintf("TLS listen error: %s", err))
+				// Retry to listen in 5 seconds interval.
 				time.Sleep(time.Second * 5)
 				continue
 			}
@@ -77,14 +79,14 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 					continue
 				}
 
-				sendToClient := make(chan Message, 100000)
+				sendToClientChan := make(chan Message, 100000)
 				clientAddress := conn.RemoteAddr().String()
 
-				// Registering new client in the address book.
-				addressBookMap[clientAddress] = addressBook{Send: sendToClient}
+				// Registering new client in the address book with channels that we can connect them through.
+				addressBookMap[clientAddress] = addressBook{Send: sendToClientChan}
 
 				// Handle individual client connection.
-				go handleConnection(conn, sendToClient, receiveChan, clientDisconnectNotifyChan)
+				go handleConnection(conn, sendToClientChan, receiveChan, clientDisconnectNotifyChan)
 			}
 		}
 	}()
@@ -96,6 +98,7 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 // It returns two channels for sending and receiving any data types, along with an error.
 // address: The network address on which the server will listen.
 func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
+	// Create channels with 100000 messages queue length.
 	dispatcherSend = make(chan interface{}, 100000)
 	dispatcherReceive = make(chan interface{}, 100000)
 
@@ -126,8 +129,8 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 		for {
 			select {
 			case data := <-receive:
-                                ReadyClientsAddressList <- data.From
-                                if data.Payload != nil {
+				ReadyClientsAddressList <- data.From
+				if data.Payload != nil {
 					// Passing the message payload to the server.
 					dispatcherReceive <- data.Payload
 				}

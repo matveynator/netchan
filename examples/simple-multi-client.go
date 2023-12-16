@@ -5,28 +5,28 @@ package main
 
 import (
 	"log"
-	"time" 
+	"time"
 
 	//add netchan import:
-  "github.com/matveynator/netchan"
+	"github.com/matveynator/netchan"
 )
 
 // respawnLock is a channel used to control the spawning of client routines.
 var respawnLock chan int
 
-func main() { 
- //start 1 server:
- go server() 
+func main() {
+	//start 1 server:
+	go server()
 
- //start 50 clients:
- respawnLock = make(chan int, 50)
-  // Launches a goroutine that periodically tries to run dialWorkerRun.
-  go func() {
-    for {
-      respawnLock <- 1
+	//start 50 clients:
+	respawnLock = make(chan int, 50)
+	// Launches a goroutine that periodically tries to run dialWorkerRun.
+	go func() {
+		for {
+			respawnLock <- 1
 			go client()
-    }
-  }()
+		}
+	}()
 
 	select {} // Blocking the main function to keep the application running.
 }
@@ -34,7 +34,7 @@ func main() {
 // server function manages the server-side operations of the application.
 // It listens for incoming messages from clients and echoes them back.
 func server() {
-	send, receive, err := netchan.Listen("127.0.0.1:9999") 
+	send, receive, err := netchan.Listen("127.0.0.1:9999")
 
 	if err != nil {
 		log.Println(err) // Logging any error encountered during setup.
@@ -46,10 +46,10 @@ func server() {
 		select {
 		case message := <-receive:
 			//print message
-			log.Printf("Server received: %v\n", message) 
+			log.Printf("Server received: %v\n", message)
 
 			//echo message back to client
-			send <- message 
+			send <- message
 		}
 	}
 }
@@ -57,7 +57,7 @@ func server() {
 // client function manages the client-side operations of the application.
 // It sends timestamps to the server and receives echo responses.
 func client() {
-	send, receive, err := netchan.Dial("127.0.0.1:9999") 
+	send, receive, err := netchan.Dial("127.0.0.1:9999")
 
 	if err != nil {
 		log.Println(err) // Logging any error encountered during connection.
@@ -67,16 +67,16 @@ func client() {
 	go func() {
 		for {
 			// Create new message with current time:
-			message := time.Now().UnixNano() 
-	
+			message := time.Now().UnixNano()
+
 			// Sending message to server:
-			send <- message                  
+			send <- message
 
 			// Log message:
 			log.Printf("Client sent: %d\n", message)
 
 			// Sleep 1 second before next message:
-			time.Sleep(1 * time.Second) 
+			time.Sleep(1 * time.Second)
 		}
 	}()
 

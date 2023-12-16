@@ -16,7 +16,7 @@ var respawnLock chan int
 // It returns two channels for sending and receiving Message structs,
 // and an error if the initial connection setup fails.
 func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
-	
+
 	// Channels with 1000 messages queue length.
 	sendChan = make(chan Message, 1000)
 	receiveChan = make(chan Message, 1000)
