@@ -16,8 +16,12 @@ var respawnLock chan int
 // It returns two channels for sending and receiving Message structs,
 // and an error if the initial connection setup fails.
 func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
-	sendChan = make(chan Message, 100000)
-	receiveChan = make(chan Message, 100000)
+	
+	// Channels with 1000 messages queue length.
+	sendChan = make(chan Message, 1000)
+	receiveChan = make(chan Message, 1000)
+
+	// Spawn only one dial connection:
 	respawnLock = make(chan int, 1)
 
 	// Launches a goroutine that periodically tries to run dialWorkerRun.
@@ -68,7 +72,7 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 					if address == conn.RemoteAddr().String() {
 						err := conn.Close()
 						if err != nil {
-							log.Printf("Dial already closed connection to %s.", address)
+							log.Printf("DIAL already closed connection to %s.", address)
 						} else {
 							log.Printf("DIAL closed connection to %s.", address)
 						}
@@ -86,8 +90,9 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message)
 // It uses AdvancedDial to establish a network connection and then sets up
 // channels to send and receive data.
 func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
-	dispatcherSend = make(chan interface{}, 100000)
-	dispatcherReceive = make(chan interface{}, 100000)
+	// Channels with 1000 messages queue length.
+	dispatcherSend = make(chan interface{}, 1000)
+	dispatcherReceive = make(chan interface{}, 1000)
 
 	// Establishes a TLS connection to the server.
 	send, receive, err := AdvancedDial(address)
@@ -107,18 +112,19 @@ func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive ch
 			}
 		}()
 
-		// Handles receiving messages from the server.
+		// Gouroutine handles receiving messages from server.
 		go func() {
+			// Send empty message to server to notify that we are ready to receive messages:
 			readyToReceive := Message{}
 			readyToReceive.To = address
-
 			send <- readyToReceive
 
+			// Loop than will proxy incoming network data to client receive channel:
 			for {
 				select {
 				case data := <-receive:
-					send <- readyToReceive
-					dispatcherReceive <- data.Payload // Sending the constructed message to the client.
+					//Sending the constructed message to the client.
+					dispatcherReceive <- data.Payload
 				}
 			}
 		}()

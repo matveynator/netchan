@@ -18,8 +18,8 @@ func main() {
  //start 1 server:
  go server() 
 
- //start 500 clients:
- respawnLock = make(chan int, 500)
+ //start 50 clients:
+ respawnLock = make(chan int, 50)
   // Launches a goroutine that periodically tries to run dialWorkerRun.
   go func() {
     for {
