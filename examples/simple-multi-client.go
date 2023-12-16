@@ -75,8 +75,8 @@ func client() {
 			// Log message:
 			log.Printf("Client sent: %d\n", message)
 
-			// Sleep 1 second before next message:
-			time.Sleep(1 * time.Second)
+			// Sleep 200 Millisecond before next message:
+			time.Sleep(200 * time.Millisecond)
 		}
 	}()
 

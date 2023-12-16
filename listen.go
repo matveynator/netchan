@@ -7,6 +7,44 @@ import (
 	"time"
 )
 
+// accessLock is a channel used to control access to address book map (one at a time).
+var accessLock chan int
+
+// Map for fast searching of connected client addresses and their send channels.
+var addressBookMap map[string]addressBook
+
+// Coordinator handles all addressBookMap operations.
+func addressBookManager(operation string, clientAddress string, clientSendChannel chan Message) chan Message {
+	defer func() {
+		// Unlock access to address book
+		<- accessLock
+	}()
+
+	// Lock access to address book
+	accessLock <- 1
+
+	switch operation {
+	case "add":
+		// Adding connected client to the address book.
+		addressBookMap[clientAddress] = addressBook{Send: clientSendChannel}
+		return nil
+	case "delete":
+		// Removing disconnected client from the address book.
+		delete(addressBookMap, clientAddress)
+		return nil
+	case "get":
+		// Return client send channel
+		addressbook, ok := addressBookMap[clientAddress]
+		if ok {
+			return addressbook.Send
+		} else {
+			// If recipient not found, return nil.
+			return nil
+		}
+	}
+	return nil
+}
+
 // AdvancedListen sets up a secure TCP listener using TLS.
 // It returns two channels for sending and receiving messages in special netchan type, along with an error.
 // addr: The network address to listen on.
@@ -15,13 +53,11 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 	sendChan = make(chan Message, 100000)
 	receiveChan = make(chan Message, 100000)
 
-	// addressBook is a struct to hold the send channel for each connected client.
-	type addressBook struct {
-		Send chan Message
-	}
-
 	// Map for fast searching of connected client addresses and their send channels.
-	addressBookMap := make(map[string]addressBook)
+	addressBookMap = make(map[string]addressBook)
+
+	// access lock to address book:
+	accessLock = make(chan int, 1)
 
 	// Generate TLS configuration for secure communication.
 	tlsConfig, err := generateTLSConfig()
@@ -46,12 +82,13 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 					select {
 					case message := <-sendChan:
 						// Forwarding messages to the appropriate recipient.
-						if adressbook, ok := addressBookMap[message.To]; ok {
-							adressbook.Send <- message
-						} else {
+						clientReceiveChannel := addressBookManager("get", message.To, nil)
+						if clientReceiveChannel == nil {
 							// If recipient not found, return message to sender.
 							log.Printf("Address %s not found in addressbook, returning message back sender via RECEIVE channel.", message.To)
 							receiveChan <- message
+						} else {
+							clientReceiveChannel <- message
 						}
 					}
 				}
@@ -66,7 +103,7 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 					select {
 					case address := <-clientDisconnectNotifyChan:
 						// Removing disconnected clients from the address book.
-						delete(addressBookMap, address)
+						addressBookManager("delete", address, nil)
 						log.Printf("Connection closed and removed from address book: %s", address)
 					}
 				}
@@ -83,7 +120,7 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 				clientAddress := conn.RemoteAddr().String()
 
 				// Registering new client in the address book with channels that we can connect them through.
-				addressBookMap[clientAddress] = addressBook{Send: sendToClientChan}
+				addressBookManager("add", clientAddress, sendToClientChan)
 
 				// Handle individual client connection.
 				go handleConnection(conn, sendToClientChan, receiveChan, clientDisconnectNotifyChan)

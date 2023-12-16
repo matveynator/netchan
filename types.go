@@ -6,3 +6,8 @@ type Message struct {
 	Payload interface{} //channel data packed in GOB (encrypted by recepient public key)
 	Secret  string      //random per session secret (encrypted by recepient public key)
 }
+
+// addressBook is a struct to hold the send channel for each connected client.
+type addressBook struct {
+	Send chan Message
+}
