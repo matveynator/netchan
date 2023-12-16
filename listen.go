@@ -100,7 +100,7 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 	dispatcherReceive = make(chan interface{}, 100000)
 
 	// Channel which holds addresses of clients that are ready to receive data.
-	var ReadyClientsAddressList = make(chan string, 100000)
+	var ReadyClientsAddressList = make(chan string, 1000000)
 
 	send, receive, err := AdvancedListen(address)
 	if err != nil {
@@ -126,10 +126,8 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 		for {
 			select {
 			case data := <-receive:
-				if data.Payload == nil {
-					// Marking client as ready to receive a message.
-					ReadyClientsAddressList <- data.From
-				} else {
+                                ReadyClientsAddressList <- data.From
+                                if data.Payload != nil {
 					// Passing the message payload to the server.
 					dispatcherReceive <- data.Payload
 				}
