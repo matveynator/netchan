@@ -54,6 +54,9 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 	sendChan = make(chan Message, 100000)
 	receiveChan = make(chan Message, 100000)
 
+	// A channel to signal successful connection
+	serverBindedOnPort := make(chan bool)
+
 	// Map for fast searching of connected client addresses and their send channels.
 	addressBookMap = make(map[string]addressBook)
 
@@ -75,59 +78,66 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 				// Retry to listen in 5 seconds interval.
 				time.Sleep(time.Second * 5)
 				continue
-			}
-			defer listener.Close()
+			} else {
+				defer listener.Close()
 
-			go func() {
-				for {
-					select {
-					case message := <-sendChan:
-						// Forwarding messages to the appropriate recipient.
-						clientReceiveChannel := addressBookManager("get", message.To, nil)
-						if clientReceiveChannel == nil {
-							// If recipient not found, return message to sender.
-							log.Printf("Address %s not found in addressbook, returning message back sender via RECEIVE channel.", message.To)
-							receiveChan <- message
-						} else {
-							clientReceiveChannel <- message
+				// If connection is successful, send a signal
+				serverBindedOnPort <- true
+
+				go func() {
+					for {
+						select {
+						case message := <-sendChan:
+							// Forwarding messages to the appropriate recipient.
+							clientReceiveChannel := addressBookManager("get", message.To, nil)
+							if clientReceiveChannel == nil {
+								// If recipient not found, return message to sender.
+								log.Printf("Address %s not found in addressbook, returning message back sender via RECEIVE channel.", message.To)
+								receiveChan <- message
+							} else {
+								clientReceiveChannel <- message
+							}
 						}
 					}
-				}
-			}()
+				}()
 
-			log.Printf("Listening on %s\n", addr)
+				log.Printf("Listening on %s\n", addr)
 
-			clientDisconnectNotifyChan := make(chan string, 100000)
+				clientDisconnectNotifyChan := make(chan string, 100000)
 
-			go func() {
-				for {
-					select {
-					case address := <-clientDisconnectNotifyChan:
-						// Removing disconnected clients from the address book.
-						addressBookManager("delete", address, nil)
-						log.Printf("Connection closed and removed from address book: %s", address)
+				go func() {
+					for {
+						select {
+						case address := <-clientDisconnectNotifyChan:
+							// Removing disconnected clients from the address book.
+							addressBookManager("delete", address, nil)
+							log.Printf("Connection closed and removed from address book: %s", address)
+						}
 					}
+				}()
+
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						log.Printf("Failed to accept connection: %v", err)
+						continue
+					}
+
+					sendToClientChan := make(chan Message, 100000)
+					clientAddress := conn.RemoteAddr().String()
+
+					// Registering new client in the address book with channels that we can connect them through.
+					addressBookManager("add", clientAddress, sendToClientChan)
+
+					// Handle individual client connection.
+					go handleConnection(conn, sendToClientChan, receiveChan, clientDisconnectNotifyChan)
 				}
-			}()
-
-			for {
-				conn, err := listener.Accept()
-				if err != nil {
-					log.Printf("Failed to accept connection: %v", err)
-					continue
-				}
-
-				sendToClientChan := make(chan Message, 100000)
-				clientAddress := conn.RemoteAddr().String()
-
-				// Registering new client in the address book with channels that we can connect them through.
-				addressBookManager("add", clientAddress, sendToClientChan)
-
-				// Handle individual client connection.
-				go handleConnection(conn, sendToClientChan, receiveChan, clientDisconnectNotifyChan)
 			}
 		}
 	}()
+
+	// Wait for a successful connection signal
+	<-serverBindedOnPort
 
 	return sendChan, receiveChan, nil
 }

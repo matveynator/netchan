@@ -16,8 +16,8 @@ func main() {
 	//start 1 server:
 	go server()
 
-	//start 500 clients:
-	respawnLock = make(chan int, 500)
+	//start 50 clients:
+	respawnLock = make(chan int, 50)
 	// Launches a goroutine that periodically tries to run dialWorkerRun.
 	go func() {
 		for {
@@ -26,11 +26,12 @@ func main() {
 		}
 	}()
 
-	select {} // Blocking the main function to keep the application running.
+	// Loop forever.
+	select {}
 }
 
 // server function manages the server-side operations of the application.
-// It listens for incoming messages from clients and echoes them back.
+// It sends messages to clients and they echoe them back to server.
 func server() {
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
 
@@ -39,22 +40,22 @@ func server() {
 		return
 	}
 
-  // Goroutine for sending messages to connected clients.
-  go func() {
-    for {
-      // Create new message with current time:
-      message := time.Now().UnixNano()
+	// Goroutine that sends messages to connected clients.
+	go func() {
+		for {
+			// Create new message with current time:
+			message := time.Now().UnixNano()
 
-      // Sending message to clients:
-      send <- message
+			// Sending message to clients:
+			send <- message
 
-      // Log message:
-      log.Printf("Server sent: %d\n", message)
+			// Log message:
+			log.Printf("Server sent: %d\n", message)
 
-      // Sleep 200 Millisecond before next message:
-      time.Sleep(200 * time.Millisecond)
-    }
-  }()
+			// Sleep 100 Millisecond before next message:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
 
 	// Server's loop for handling incoming messages.
 	for {
@@ -67,7 +68,7 @@ func server() {
 }
 
 // client function manages the client-side operations of the application.
-// It sends timestamps to the server and receives echo responses.
+// It receives messages from the server and echo them back.
 func client() {
 	send, receive, err := netchan.Dial("127.0.0.1:9999")
 
@@ -80,7 +81,7 @@ func client() {
 		select {
 		case message := <-receive:
 			log.Printf("Client received: %v\n", message)
-			// Echo message back to server:
+			// Echo message back to server (this could be a completed task)
 			send <- message
 		}
 	}
