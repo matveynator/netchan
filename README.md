@@ -54,7 +54,6 @@ func main() {
 // It sends messages (tasks) to clients and they echoe (compute) them back to server.
 func server() {
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
-
 	if err != nil {
 		log.Println(err)
 		return
