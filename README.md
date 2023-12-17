@@ -2,9 +2,8 @@
 
 # netchan: go network channels. 
 Secure by default. Cluster ready. 
-
 Communicate via standard go channels across multiple machines. 
-Can send any type of data including another channels.
+Can send and receive any type of data including another channels.
 
 <p align="right">
 <img align="right" property="og:image" src="https://repository-images.githubusercontent.com/710838463/86ad7361-2608-4a70-9197-e66883eb9914" width="30%">
