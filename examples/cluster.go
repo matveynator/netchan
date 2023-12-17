@@ -1,4 +1,4 @@
-// Package main demonstrates the use of the netchan package for creating a simple cluster.
+// Example demonstrates the use of the netchan package for creating a simple cluster.
 package main
 
 import (
@@ -31,38 +31,38 @@ func main() {
 }
 
 // server function manages the server-side operations of the application.
-// It sends messages to clients and they echoe them back to server.
+// It sends messages (tasks) to clients and they echoe (compute) them back to server.
 func server() {
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
 
 	if err != nil {
-		log.Println(err) // Logging any error encountered during setup.
+		log.Println(err)
 		return
-	}
+	} else {
+		// Goroutine that sends messages to connected clients in our cluster.
+		go func() {
+			for {
+				// Create new message with current time (just a simple text for our example):
+				message := time.Now().UnixNano()
 
-	// Goroutine that sends messages to connected clients.
-	go func() {
+				// Sending message to clients (this could be anything, for example task to factorize big number):
+				send <- message
+
+				// Log message:
+				log.Printf("Server sent: %d\n", message)
+
+				// Sleep 50 Millisecond before next message:
+				time.Sleep(50 * time.Millisecond)
+			}
+		}()
+
+		// Server's loop for handling incoming messages.
 		for {
-			// Create new message with current time:
-			message := time.Now().UnixNano()
-
-			// Sending message to clients:
-			send <- message
-
-			// Log message:
-			log.Printf("Server sent: %d\n", message)
-
-			// Sleep 100 Millisecond before next message:
-			time.Sleep(100 * time.Millisecond)
-		}
-	}()
-
-	// Server's loop for handling incoming messages.
-	for {
-		select {
-		case message := <-receive:
-			//print message
-			log.Printf("Server received: %v\n", message)
+			select {
+			case message := <-receive:
+				//Receiving results from our cluster:
+				log.Printf("Server received: %v\n", message)
+			}
 		}
 	}
 }
@@ -71,18 +71,18 @@ func server() {
 // It receives messages from the server and echo them back.
 func client() {
 	send, receive, err := netchan.Dial("127.0.0.1:9999")
-
 	if err != nil {
-		log.Println(err) // Logging any error encountered during connection.
-	}
-
-	// Client's loop for handling incoming messages from server:
-	for {
-		select {
-		case message := <-receive:
-			log.Printf("Client received: %v\n", message)
-			// Echo message back to server (this could be a completed task)
-			send <- message
+		log.Println(err)
+		return
+	} else {
+		// Client's loop for handling incoming messages (tasks) from server:
+		for {
+			select {
+			case message := <-receive:
+				log.Printf("Client received: %v\n", message)
+				// Echo message back to server (this could be a computed task)
+				send <- message
+			}
 		}
 	}
 }
