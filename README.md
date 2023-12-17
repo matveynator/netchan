@@ -53,12 +53,12 @@ message := <-receive
 
 ### Step 5: Sending Messages
 To send a message, either from the server to the client or in the opposite direction, use the `send` channel.
-
+> Please note that currently send operation is non-blocking and there's a possibility of losing messages, even without network or process failures.
 ```go
 send <- message
 ```
 
-> This basic example demonstrates how to set up a simple server-client communication using `netchan`. Remember to handle errors appropriately and ensure that your network addresses and ports are configured correctly for your specific use case.
+This basic example demonstrates how to set up a simple server-client communication using `netchan`. Remember to handle errors appropriately and ensure that your network addresses and ports are configured correctly for your specific use case.
 
 
 ## Documentation
