@@ -1,6 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1)
 
-# netchan = go network channels. 
+# Network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
 > Secure by default. Cluster ready. Communicate via standard go channels across multiple machines. Can send and receive any type of data including another channels.
 
 <p align="right">
