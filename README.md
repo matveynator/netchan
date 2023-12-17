@@ -1,6 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1)
 
-# netchan = go channels across multiple machines. 
+# netchan: go channels across multiple machines. 
 Secure by default. Cluster ready. 
 
 <p align="right">
