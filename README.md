@@ -27,21 +27,20 @@ Please note that message could be any type of data including chan (go channel).
 ### Create netchan SERVER:
 `send, receive, err := netchan.Listen("127.0.0.1:9999")`
 
-### Send message from server to ready client:
+### Send message from server to any ready client:
 `send <- message`
 
-### Receive result from clients to server:
+### Receive message from client to server:
 `message := <-receive`
 
 ### Create netchan CLIENT:
 `send, receive, err := netchan.Dial("127.0.0.1:9999")`
 
-### Receive message to client from server
+### Receive message from server to client
 `message := <-receive`
 
 ### Send message from client to server
 `send <- message`
-
 
 ## Documentation
 - [version 1.0 Plan and goals](wiki/v1-plan.md)
