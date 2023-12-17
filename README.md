@@ -1,6 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1)
 
-# Welcome to the netchan Wiki!
+# netchan - go channels across multiple machines. Secure by default. Cluster ready. 
 
 <p align="right">
 <img align="right" property="og:image" src="https://repository-images.githubusercontent.com/710838463/86ad7361-2608-4a70-9197-e66883eb9914" width="30%">
