@@ -51,7 +51,7 @@ func main() {
 }
 
 // server function manages the server-side operations of the application.
-// It sends messages to clients and they echoe them back to server.
+// It sends messages (tasks) to clients and they echoe (compute) them back to server.
 func server() {
 	send, receive, err := netchan.Listen("127.0.0.1:9999")
 
