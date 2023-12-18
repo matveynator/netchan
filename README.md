@@ -12,7 +12,7 @@
 
 ## netchan Usage Example
 
-> This guide provides a basic example of how to use the `netchan` package for setting up simple server-client communication in Go. Note that `message` can be any type of data, including a Go channel (`chan`).
+This guide provides a basic example of how to use the `netchan` package for setting up simple server-client communication in Go. Note that `message` can be any type of data, including a Go channel (`chan`).
 
 ### Step 1: Import the Package
 First, import the `netchan` package into your Go program.
