@@ -53,7 +53,7 @@ message := <-receive
 
 ### Step 5: Sending Messages
 To send a message, either from the server to the client or in the opposite direction, use the `send` channel.
-> Please note that currently send operation is non-blocking and there's a possibility of losing messages, even without network or process failures.
+> Please note that currently send operation is non-blocking and there's a possibility of losing messages due to network failures.
 ```go
 send <- message
 ```
