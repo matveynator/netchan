@@ -4,7 +4,7 @@ import (
 	"encoding/gob"
 	"log"
 	"net"
-	"time"
+//	"time"
 )
 
 // handleConnection manages a single client connection.
@@ -66,10 +66,6 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 			// Log any network error received and exit the loop.
 			log.Printf("Netchan handle connection worker exited due to connection error: %s\n", networkError)
 			return
-
-		default:
-			// Sleep for a second if there is no activity.
-			time.Sleep(time.Second)
 		}
 	}
 }

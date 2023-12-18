@@ -52,7 +52,7 @@ func server() {
 				log.Printf("Server sent: %d\n", message)
 
 				// Sleep 50 Millisecond before next message:
-				time.Sleep(50 * time.Millisecond)
+				//time.Sleep(50 * time.Millisecond)
 			}
 		}()
 

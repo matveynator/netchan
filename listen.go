@@ -50,9 +50,9 @@ func addressBookManager(operation string, clientAddress string, clientSendChanne
 // It returns two channels for sending and receiving messages in special netchan type, along with an error.
 // addr: The network address to listen on.
 func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
-	// Create channels with 100000 messages queue length.
-	sendChan = make(chan Message, 100000)
-	receiveChan = make(chan Message, 100000)
+	// send channel with 1 message queue length.
+	sendChan = make(chan Message, 1)
+	receiveChan = make(chan Message, 1000)
 
 	// A channel to signal successful connection
 	serverBindedOnPort := make(chan bool)
@@ -123,7 +123,7 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 						continue
 					}
 
-					sendToClientChan := make(chan Message, 100000)
+					sendToClientChan := make(chan Message, 1)
 					clientAddress := conn.RemoteAddr().String()
 
 					// Registering new client in the address book with channels that we can connect them through.
@@ -146,12 +146,12 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 // It returns two channels for sending and receiving any data types, along with an error.
 // address: The network address on which the server will listen.
 func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
-	// Create channels with 100000 messages queue length.
-	dispatcherSend = make(chan interface{}, 100000)
-	dispatcherReceive = make(chan interface{}, 100000)
+	// send channel with 1 message queue length.
+	dispatcherSend = make(chan interface{}, 1)
+	dispatcherReceive = make(chan interface{}, 1000)
 
 	// Channel which holds addresses of clients that are ready to receive data.
-	var ReadyClientsAddressList = make(chan string, 1000000)
+	var ReadyClientsAddressList = make(chan string, 10000000)
 
 	send, receive, err := AdvancedListen(address)
 	if err != nil {

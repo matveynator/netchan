@@ -17,8 +17,8 @@ var respawnLock chan int
 // and an error if the initial connection setup fails.
 func AdvancedDial(addr string) (sendChan chan Message, receiveChan chan Message, err error) {
 
-	// Channels with 1000 messages queue length.
-	sendChan = make(chan Message, 1000)
+	// send channel with 1 message queue length.
+	sendChan = make(chan Message, 1)
 	receiveChan = make(chan Message, 1000)
 
 	// A channel to signal successful connection
@@ -102,8 +102,8 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message,
 // It uses AdvancedDial to establish a network connection and then sets up
 // channels to send and receive data.
 func Dial(address string) (dispatcherSend chan interface{}, dispatcherReceive chan interface{}, err error) {
-	// Channels with 1000 messages queue length.
-	dispatcherSend = make(chan interface{}, 1000)
+	// send channel with 1 message queue length.
+	dispatcherSend = make(chan interface{}, 1)
 	dispatcherReceive = make(chan interface{}, 1000)
 
 	// Establishes a TLS connection to the server.
