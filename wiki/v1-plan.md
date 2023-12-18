@@ -53,6 +53,7 @@
       - Gather local and public IP addresses for each client/server.
       - Perform connectivity checks and prioritize best connection paths.
       - Ensure security during the ICE process.
+      - Implement distance vector routing
 
    B. **RAID-like Network Channel System (Focused on Channel Management and Resilience)**
       - **Multiple Channel Establishment**: Create several network channels for each connection to provide redundancy.
