@@ -134,7 +134,7 @@ Here are some projects related to go network channels:
 - [Netchan (old version)](https://github.com/matveynator/netchan-old) - Rob Pike’s initial concept.
 - [Docker Libchan](https://github.com/docker/libchan) - A lightweight, networked, message-passing interface from Docker.
 - [GraftJS/jschan](https://github.com/GraftJS/jschan) - A JavaScript implementation of similar channel-based communication.
-- [Matryer/Vice](https://github.com/matryer/vice) - A Go-based toolkit for building microservices and other distributed systems.
+- [Matryer/Vice](https://github.com/matryer/vice) - Go channels at horizontal scale.
 
 
 ## License
