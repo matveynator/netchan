@@ -69,9 +69,10 @@ netchan is  described as 'Go channels over the network,' but this is a bit misle
 - [version 1.0 Plan and goals](wiki/v1-plan.md)
 
 ## Benchmark 
-netchan (TLS 1.3 + GOB Encode/Decode) via localhost:9999
 
 ```
+Benchmark netchan (TLS 1.3 + GOB Encode/Decode) via localhost:9999
+
 Intel(R) Core(TM) m3-7Y32 CPU @ 1.10GHz 1 core:
 ===============================================
 Sent:                  1092349 (33101 msg/sec) - 3677 msg/sec per client
