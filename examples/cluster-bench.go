@@ -5,11 +5,40 @@ import (
 	"fmt"
 	"log"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	//add netchan import:
 	"github.com/matveynator/netchan"
 )
+
+var maxClients uint64
+
+func increaseMaxOpenFiles(additional uint64) error {
+	var rLimit syscall.Rlimit
+
+	// Get the current limit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		return fmt.Errorf("failed to get current limit: %v", err)
+	}
+
+	// Increase the limit
+	newLimit := rLimit.Cur + (additional * 2)
+	if newLimit > rLimit.Max {
+		newLimit = rLimit.Max
+	}
+
+	rLimit.Cur = newLimit
+
+	// Set the new limit
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		return fmt.Errorf("failed to set new limit: %v", err)
+	}
+
+	return nil
+}
 
 // respawnLock is a channel used to control the spawning of client routines.
 var respawnLock chan int
@@ -44,11 +73,20 @@ func benchmark() {
 }
 
 func main() {
+
+	maxClients = 10000
+
+	err := increaseMaxOpenFiles(maxClients)
+	if err != nil {
+		fmt.Printf("Ulimit set error: %v\n", err)
+	} else {
+		fmt.Println("Ulimit set succesfully.")
+	}
 	//start 1 server:
 	go server()
 
-	//start 50 clients:
-	respawnLock = make(chan int, 50)
+	//start maxClients clients:
+	respawnLock = make(chan int, maxClients)
 	// Launches a goroutine that periodically tries to run dialWorkerRun.
 	go func() {
 		for {
