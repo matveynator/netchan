@@ -64,7 +64,7 @@ func benchmark() {
 			fmt.Printf("Received:              %d (%d msg/sec) - %d msg/sec per client\n", atomic.LoadInt64(&received), int64(receivedRate), int64(perClientReceivedRate))
 			fmt.Printf("Processed:             %d (%d msg/sec)\n", atomic.LoadInt64(&total), int64(totalRate))
 			fmt.Printf("Not received:          %d msg in %d seconds\n", atomic.LoadInt64(&failed), seconds)
-			fmt.Printf("Successfully spawned   %d clients\n", spawned)
+			fmt.Printf("Successfully connected %d clients\n", spawned)
 
 		}
 		seconds++
@@ -74,7 +74,7 @@ func benchmark() {
 
 func main() {
 
-	maxClients = 10000
+	maxClients = 50
 
 	err := increaseMaxOpenFiles(maxClients)
 	if err != nil {
