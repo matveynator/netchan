@@ -14,7 +14,7 @@ var respawnLock chan int
 
 func main() {
 	//start 1 server:
-	go server()
+	//go server()
 
 	//start 50 clients:
 	respawnLock = make(chan int, 50)
@@ -70,7 +70,7 @@ func server() {
 // client function manages the client-side operations of the application.
 // It receives messages from the server and echo them back.
 func client() {
-	send, receive, err := netchan.Dial("127.0.0.1:9999")
+	send, receive, err := netchan.Dial("144.76.87.91:9999")
 	if err != nil {
 		log.Println(err)
 		return

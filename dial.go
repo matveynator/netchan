@@ -61,7 +61,7 @@ func dialWorkerRun(addr string, sendChan chan Message, receiveChan chan Message,
 	conn, err := tls.DialWithDialer(&dialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		Printonce(fmt.Sprintf("Dial destination %s unreachable. Error: %s", addr, err))
-		return
+		//return
 	} else {
 		defer func() {
 			if conn != nil {

@@ -4,7 +4,7 @@ import (
 	"encoding/gob"
 	"log"
 	"net"
-//	"time"
+	// "time"
 )
 
 // handleConnection manages a single client connection.
@@ -20,7 +20,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 	}()
 
 	// Channel to collect any errors that occur during connection handling.
-	connectionErrorChannel := make(chan error, 1000)
+	decodeErrorChannel := make(chan error, 1000)
 
 	// Creating a new decoder and encoder for the connection.
 	decoder := gob.NewDecoder(conn)
@@ -32,8 +32,8 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 			var msg Message
 			err := decoder.Decode(&msg)
 			if err != nil {
-				// Send error to connectionErrorChannel and log it.
-				connectionErrorChannel <- err
+				// Send error to decodeErrorChannel and log it.
+				decodeErrorChannel <- err
 				log.Printf("Error while decoding: %s", err)
 				return
 			}
@@ -62,9 +62,9 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 			}
 			// Logging the sent message is disabled to reduce verbosity.
 
-		case networkError := <-connectionErrorChannel:
+		case decodeError := <-decodeErrorChannel:
 			// Log any network error received and exit the loop.
-			log.Printf("Netchan handle connection worker exited due to connection error: %s\n", networkError)
+			log.Printf("Netchan handle connection worker exited due to decode error: %s\n", decodeError)
 			return
 		}
 	}
