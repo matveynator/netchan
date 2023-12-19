@@ -108,6 +108,12 @@ Processed:             59339805 (912741 msg/sec)
 Not received:          17 msg in 64 seconds
 Successfully spawned   39 clients
 
+Sent:                  32905716 (353824 msg/sec) - 36 msg/sec per client
+Received:              32905698 (353824 msg/sec) - 36 msg/sec per client
+Processed:             65811411 (699962 msg/sec)
+Not received:          21 msg in 93 seconds
+Successfully spawned   9708 clients
+
 Sent:                  25696827 (333725 msg/sec) - 17 msg/sec per client
 Received:              25696812 (333724 msg/sec) - 17 msg/sec per client
 Processed:             51393629 (658509 msg/sec)
