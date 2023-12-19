@@ -79,19 +79,19 @@ Sent:                  1092349 (33101 msg/sec) - 3677 msg/sec per client
 Received:              1092340 (33100 msg/sec) - 3677 msg/sec per client
 Processed:             2184672 (64263 msg/sec)
 Not received:          10 msg in 33 seconds
-Successfully spawned   9 clients
+Successfully connected 9 clients
 
 Sent:                  2713953 (35709 msg/sec) - 743 msg/sec per client
 Received:              2713911 (35709 msg/sec) - 743 msg/sec per client
 Processed:             5427864 (70830 msg/sec)
 Not received:          42 msg in 76 seconds
-Successfully spawned   48 clients
+Successfully connected 48 clients
 
 Sent:                  27225572 (28448 msg/sec) - 8 msg/sec per client
 Received:              27223530 (28446 msg/sec) - 8 msg/sec per client
 Processed:             54449102 (56838 msg/sec)
 Not received:          2042 msg in 957 seconds
-Successfully spawned   3214 clients
+Successfully connected 3214 clients
 
 Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz 4 core:
 ================================================
@@ -99,7 +99,7 @@ Sent:                  4492383 (109570 msg/sec) - 3424 msg/sec per client
 Received:              4492388 (109569 msg/sec) - 3424 msg/sec per client
 Processed:             8984727 (214121 msg/sec)
 Not received:          19 msg in 41 seconds
-Successfully spawned   32 clients
+Successfully connected 32 clients
 
 AMD Ryzen 9 7950X3D 16-Core Processor:
 ================================================
@@ -107,19 +107,19 @@ Sent:                  29669916 (463592 msg/sec) - 11886 msg/sec per client
 Received:              29669902 (463592 msg/sec) - 11886 msg/sec per client
 Processed:             59339805 (912741 msg/sec)
 Not received:          17 msg in 64 seconds
-Successfully spawned   39 clients
+Successfully connected 39 clients
 
 Sent:                  32905716 (353824 msg/sec) - 36 msg/sec per client
 Received:              32905698 (353824 msg/sec) - 36 msg/sec per client
 Processed:             65811411 (699962 msg/sec)
 Not received:          21 msg in 93 seconds
-Successfully spawned   9708 clients
+Successfully connected 9708 clients
 
 Sent:                  25696827 (333725 msg/sec) - 17 msg/sec per client
 Received:              25696812 (333724 msg/sec) - 17 msg/sec per client
 Processed:             51393629 (658509 msg/sec)
 Not received:          21 msg in 77 seconds
-Successfully spawned   19488 clients
+Successfully connected 19488 clients
 ```
 
 ## Community and Support
