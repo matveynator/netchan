@@ -69,10 +69,11 @@ netchan is  described as 'Go channels over the network,' but this is a bit misle
 - [version 1.0 Plan and goals](wiki/v1-plan.md)
 
 ## Benchmark 
-Intel(R) Core(TM) m3-7Y32 CPU @ 1.10GHz 2 core 4 threads:
-TLS 1.3 + GOB Encode/Decode via localhost:9999
+netchan (TLS 1.3 + GOB Encode/Decode) via localhost:9999
 
 ```
+Intel(R) Core(TM) m3-7Y32 CPU @ 1.10GHz 2 core:
+===============================================
 Sent:                  1092349 (33101 msg/sec) - 3677 msg/sec per client
 Received:              1092340 (33100 msg/sec) - 3677 msg/sec per client
 Processed:             2184672 (64263 msg/sec)
@@ -90,6 +91,14 @@ Received:              27223530 (28446 msg/sec) - 8 msg/sec per client
 Processed:             54449102 (56838 msg/sec)
 Not received:          2042 msg in 957 seconds
 Successfully spawned   3214 clients
+
+Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz 8 core:
+================================================
+Sent:                  4492383 (109570 msg/sec) - 3424 msg/sec per client
+Received:              4492388 (109569 msg/sec) - 3424 msg/sec per client
+Processed:             8984727 (214121 msg/sec)
+Not received:          19 msg in 41 seconds
+Successfully spawned   32 clients
 ```
 
 ## Community and Support
