@@ -127,6 +127,16 @@ Successfully connected 19488 clients
 ## Community and Support
   Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository.
 
+## Related Projects
+
+Here are some projects related to go network channels:
+
+- [Netchan (old version)](https://github.com/matveynator/netchan-old) - Rob Pike’s initial concept.
+- [Docker Libchan](https://github.com/docker/libchan) - A lightweight, networked, message-passing interface from Docker.
+- [GraftJS/jschan](https://github.com/GraftJS/jschan) - A JavaScript implementation of similar channel-based communication.
+- [Matryer/Vice](https://github.com/matryer/vice) - A Go-based toolkit for building microservices and other distributed systems.
+
+
 ## License
   `netchan` is distributed under the BSD-style License. For detailed information, please refer to the [LICENSE](https://github.com/matveynator/netchan/blob/master/LICENSE) file.
 
