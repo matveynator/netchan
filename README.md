@@ -55,7 +55,7 @@ message := <-receive
 
 ### Step 5: Sending Messages
 To send a message, either from the server to the client or in the opposite direction, use the `send` channel.
-> Please note that currently send operation is non-blocking and there's a possibility of losing messages due to network failures. Important to understand: Right now, when you send a message, it happens instantly and doesn't wait (we call this 'non-blocking'). Because of this, there's a chance messages might get lost if there are issues with the network. Also, any SEND channel in netchan is set up with a buffer size of 1. In future updates, you'll be able to change this using different settings, but we're still working on and testing this feature.
+> Currently, the send operation in our system is non-blocking, meaning messages are sent immediately without delay. This can lead to potential message loss in case of network issues. Also, every SEND channel in netchan has a buffer size of one. Future updates will allow customization of this buffer size, but this feature is still in the testing phase. As a Golang developer, please be mindful of these details for network communication.
 
 ```go
 send <- message
