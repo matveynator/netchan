@@ -72,7 +72,7 @@ netchan is  described as 'Go channels over the network,' but this is a bit misle
 netchan (TLS 1.3 + GOB Encode/Decode) via localhost:9999
 
 ```
-Intel(R) Core(TM) m3-7Y32 CPU @ 1.10GHz 2 core:
+Intel(R) Core(TM) m3-7Y32 CPU @ 1.10GHz 1 core:
 ===============================================
 Sent:                  1092349 (33101 msg/sec) - 3677 msg/sec per client
 Received:              1092340 (33100 msg/sec) - 3677 msg/sec per client
@@ -92,13 +92,27 @@ Processed:             54449102 (56838 msg/sec)
 Not received:          2042 msg in 957 seconds
 Successfully spawned   3214 clients
 
-Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz 8 core:
+Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz 4 core:
 ================================================
 Sent:                  4492383 (109570 msg/sec) - 3424 msg/sec per client
 Received:              4492388 (109569 msg/sec) - 3424 msg/sec per client
 Processed:             8984727 (214121 msg/sec)
 Not received:          19 msg in 41 seconds
 Successfully spawned   32 clients
+
+AMD Ryzen 9 7950X3D 16-Core Processor:
+================================================
+Sent:                  29669916 (463592 msg/sec) - 11886 msg/sec per client
+Received:              29669902 (463592 msg/sec) - 11886 msg/sec per client
+Processed:             59339805 (912741 msg/sec)
+Not received:          17 msg in 64 seconds
+Successfully spawned   39 clients
+
+Sent:                  25696827 (333725 msg/sec) - 17 msg/sec per client
+Received:              25696812 (333724 msg/sec) - 17 msg/sec per client
+Processed:             51393629 (658509 msg/sec)
+Not received:          21 msg in 77 seconds
+Successfully spawned   19488 clients
 ```
 
 ## Community and Support
