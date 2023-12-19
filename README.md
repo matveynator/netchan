@@ -3,7 +3,7 @@
 # Network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
 Secure by default. Ready for clusters. Use standard Go channels for communication across different machines. Capable of sending and receiving various data types, including channels. Limited synchronization capability.
 
-> **Kindly be advised: As of 19 October 2023, this project remains a work in progress.** Engage with it solely at your own discretion. We would deeply appreciate your assistance in testing its functionalities. Additionally, we welcome any suggestions for features that, in your expert opinion, would significantly enhance the netchan's capabilities.
+> Kindly be advised: As of 19 October 2023, **this project remains a work in progress**. Engage with it solely at your own decision. We would deeply appreciate your assistance in testing it. Additionally, we welcome any suggestions for features that, in your expert opinion, would significantly enhance it's capabilities.
 
 <p align="right">
 <img align="right" property="og:image" src="https://repository-images.githubusercontent.com/710838463/86ad7361-2608-4a70-9197-e66883eb9914" width="30%">
@@ -55,7 +55,8 @@ message := <-receive
 
 ### Step 5: Sending Messages
 To send a message, either from the server to the client or in the opposite direction, use the `send` channel.
-> Currently, the send operation in our system is non-blocking, meaning messages are sent immediately without delay. This can lead to potential message loss in case of network issues. Also, every SEND channel in netchan has a buffer size of one. Future updates will allow customization of this buffer size, but this feature is still in the testing phase. As a Golang programmer, it's crucial to keep these aspects in mind for effective and reliable message handling in network communications.
+
+> As a Golang developer, be aware that netchan's send operation is non-blocking and sends messages instantly. However, network problems may lead to message loss. Each SEND channel in netchan has a one-message buffer. Buffer size customization is being tested and might be available later. Remember this for reliable network application messaging.
 
 ```go
 send <- message
