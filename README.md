@@ -128,7 +128,7 @@ Successfully connected 19488 clients
 ## Community and Support
   Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository.
 
-## Related Projects
+## Similar Projects:
 
 Here are some projects related to go network channels:
 
