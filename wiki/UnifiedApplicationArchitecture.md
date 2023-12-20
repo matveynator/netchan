@@ -10,6 +10,9 @@
 
 4. **Decentralization**: By enabling each client to also function as a server, the architecture promotes a decentralized approach. This can enhance the resilience and scalability of the application, as the network doesn't rely on a single point of failure and can scale out (add more nodes) more easily.
 
+[Go back](/wiki/README.md#general-goals-and-principles)
+
+
 5. **Consistent User Experience**: From a user's perspective, a unified application architecture can provide a more consistent and integrated experience, as the underlying complexities of the network interactions are abstracted away.
 
 In summary, "Unified Application Architecture" in our plan for the netchan library signifies an approach where each participating node is an integral part of a larger system, working in unison towards common goals, thus creating a more robust, efficient, and cohesive networked application.
