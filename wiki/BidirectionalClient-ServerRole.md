@@ -13,3 +13,6 @@
 5. **Enhanced Communication and Data Flow**: In such a system, data exchange can be more efficient. Nodes can directly communicate with each other, reducing the need for intermediary nodes and potentially decreasing latency.
 
 In summary, the "Bidirectional Client-Server Role" in our netchan library is about designing each network participant to function effectively as both a client and a server. This design enhances the network's flexibility, scalability, resilience, and efficiency, which is particularly beneficial in distributed and dynamic network environments.
+
+[Go back](/wiki/README.md#general-goals-and-principles)
+

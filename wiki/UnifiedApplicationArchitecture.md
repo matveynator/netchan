@@ -15,3 +15,4 @@
 In summary, "Unified Application Architecture" in our plan for the netchan library signifies an approach where each participating node is an integral part of a larger system, working in unison towards common goals, thus creating a more robust, efficient, and cohesive networked application.
 
 [Go back](/wiki/README.md#general-goals-and-principles)
+

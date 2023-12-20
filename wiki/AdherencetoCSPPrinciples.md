@@ -1,4 +1,4 @@
-[Go back](/wiki/v1-plan.md#general-goals-and-principles)
+[Go back](/wiki/README.md#general-goals-and-principles)
 
 "Adherence to CSP Principles" in the context of our netchan library refers to aligning the network communication and concurrency model of the library with the principles of Communicating Sequential Processes (CSP). CSP is a formal language for describing patterns of interaction in concurrent systems. In the specific case of netchan library, this adherence would manifest in several ways:
 
@@ -13,3 +13,6 @@
 5. **Process Isolation**: CSP advocates for processes to operate independently without sharing state, communicating solely through message passing. This principle can be reflected in "netchan" by designing client and server entities that interact without sharing internal states, thus enhancing modularity and reducing the complexity of the system.
 
 By adhering to CSP principles, "netchan" aims to leverage the proven methodologies of CSP for handling complex concurrent and distributed systems, ensuring that the network interactions are robust, efficient, and scalable.
+
+[Go back](/wiki/README.md#general-goals-and-principles)
+

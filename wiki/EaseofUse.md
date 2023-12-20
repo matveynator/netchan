@@ -1,4 +1,4 @@
-[Go back](/wiki/v1-plan.md#general-goals-and-principles)
+[Go back](/wiki/README.md#general-goals-and-principles)
 
 "Ease of Use" refers to designing the netchan library in a way that makes it intuitive and straightforward for developers to use. Specifically, it means:
 
@@ -14,3 +14,6 @@
 
 
 In summary, "Ease of Use" in our plan aims to make the netchan library user-friendly and accessible, aligning with Go's standard practices and reducing complexity for the end-users, i.e., the developers integrating this library into their networked applications.
+
+[Go back](/wiki/README.md#general-goals-and-principles)
+

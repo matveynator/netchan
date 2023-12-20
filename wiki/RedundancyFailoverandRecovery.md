@@ -11,3 +11,4 @@
 In summary, "Redundancy, Failover and Recovery" in our "netchan" library points to a robust design that aims to maintain continuous and reliable network communication. By implementing multiple backup channels (redundancy), ensuring the system can automatically switch to these backups during failures (failover), and having mechanisms to restore normal operations post-failure (recovery), your library is designed to be resilient against network disruptions.
 
 [Go back](/wiki/README.md#general-goals-and-principles)
+

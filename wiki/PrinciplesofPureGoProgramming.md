@@ -1,4 +1,4 @@
-[Go back](/wiki/v1-plan.md#general-goals-and-principles)
+[Go back](/wiki/README.md#general-goals-and-principles)
 
 "Principles of Pure Go Programming" refers to adhering to the best practices, idiomatic patterns, and design philosophies inherent to the Go programming language. Specifically, in the case of netchan library, this could encompass several key aspects:
 
@@ -17,3 +17,6 @@
 7. **Standard Library Utilization**: Go has a powerful standard library. Leveraging these well-tested and optimized packages wherever appropriate, instead of reinventing the wheel, is a hallmark of idiomatic Go programming.
 
 In summary, "Principles of Pure Go Programming" in the context of netchan library development plan would involve embracing these key Go idioms and practices, ensuring that "netchan" is developed in a way that is true to the spirit and strengths of the Go language.
+
+[Go back](/wiki/README.md#general-goals-and-principles)
+
