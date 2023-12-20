@@ -1,4 +1,4 @@
-[Go back](/wiki/v1-plan.md#general-goals-and-principles)
+[Go back](/wiki/README.md#general-goals-and-principles)
 
 "Unified Application Architecture" refers to a design philosophy where all components of a networked application (each client and server) are developed and function as parts of a single, cohesive system. This concept is particularly relevant given the bidirectional client-server roles and the distributed nature of the system. Here's what it entails:
 
