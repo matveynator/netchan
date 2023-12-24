@@ -59,6 +59,7 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 				// Re-queue the message on failure and log the error.
 				send <- message
 				log.Printf("Re-queue sending data as sending failed with error: %s\n", sendingErr)
+				return
 			}
 			// Logging the sent message is disabled to reduce verbosity.
 
