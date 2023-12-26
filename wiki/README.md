@@ -59,6 +59,10 @@
       - **Multiple Channel Establishment**: Create several network channels for each connection to provide redundancy.
       - **Failover and Recovery**: Design the system to automatically detect channel failures and switch to a backup channel.
 
+   C. **QUIC-like or QUIC integrated network via UDP**
+      - **Integrate QUIC** inside netchan or create analogue network.
+
+
 ## Implementation
 1. **Interfaces and Abstractions**: 
    - Defining interfaces for network operations, allowing for easy expansion and modification of functionality.
