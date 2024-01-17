@@ -1,10 +1,12 @@
-[![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1) [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1) 
 
 
 
 # Network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
 Secure by default. Ready for clusters. Use standard Go channels for communication across different machines. Capable of sending and receiving various data types, including channels. Limited synchronization capability.
 
+> [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+>
 > Kindly be advised: As of today, **this project remains a work in progress**. Engage with it solely at your own decision. We would deeply appreciate your assistance in testing it. Additionally, we welcome any suggestions for features that, in your expert opinion, would significantly enhance it's capabilities.
 
 <p align="right">
