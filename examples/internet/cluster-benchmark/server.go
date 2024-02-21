@@ -109,6 +109,7 @@ func server() {
 				send <- message
 				// Increment counter for benchmark:
 				atomic.AddInt64(&sent, 1)
+				time.Sleep(1 * time.Second)
 			}
 		}()
 
