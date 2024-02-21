@@ -20,8 +20,9 @@ func addressBookManager(operation string, clientAddress string, clientSendChanne
 	accessLock <- 1
 
 	defer func() {
-		// Unlock access to address book
 		<-accessLock
+		// Unlock access to address book
+		//NOTE: defer func() goes reverse direction!
 	}()
 
 	switch operation {
@@ -75,6 +76,8 @@ func AdvancedListen(addr string) (sendChan chan Message, receiveChan chan Messag
 			listener, err := tls.Listen("tcp", addr, tlsConfig)
 			if err != nil {
 				Printonce(fmt.Sprintf("TLS listen error: %s", err))
+			  //close the listener if it was not started correctly:
+        listener.Close()
 				// Retry to listen in 5 seconds interval.
 				time.Sleep(time.Second * 5)
 				continue
@@ -159,7 +162,7 @@ func Listen(address string) (dispatcherSend chan interface{}, dispatcherReceive 
 		return
 	}
 
-	// Goroutine for dispatching messages to ready clients.
+	// Goroutine for sending messages to ready clients.
 	go func() {
 		for {
 			select {

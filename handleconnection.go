@@ -16,8 +16,11 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 
 	// This deferred function notifies about the client disconnection and closes the connection.
 	defer func() {
-		clientDisconnectNotifyChan <- conn.RemoteAddr().String()
 		conn.Close()
+		//then close connection
+		clientDisconnectNotifyChan <- conn.RemoteAddr().String()
+		//first send address to clientDisconnectNotifyChan to clean it from address book
+		//NOTE: defer func() goes reverse direction!
 	}()
 
 	// Channel to collect any errors that occur during connection handling.
