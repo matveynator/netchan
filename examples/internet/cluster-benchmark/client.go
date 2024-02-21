@@ -104,7 +104,7 @@ func client() {
 		atomic.AddInt64(&spawned, -1)
 	}()
 
-	send, receive, err := netchan.Dial("locahost:9999")
+	send, receive, err := netchan.Dial("localhost:9999")
 	if err != nil {
 		log.Println(err)
 		//return
