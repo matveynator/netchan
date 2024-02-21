@@ -2,6 +2,7 @@ package netchan
 
 import (
 	"encoding/gob"
+	"io"
 	"log"
 	"net"
 	// "time"
@@ -32,10 +33,17 @@ func handleConnection(conn net.Conn, send chan Message, receive chan Message, cl
 			var msg Message
 			err := decoder.Decode(&msg)
 			if err != nil {
-				// Send error to decodeErrorChannel and log it.
-				decodeErrorChannel <- err
-				log.Printf("Error while decoding: %s", err)
-				return
+				if err == io.EOF {
+					// Connection closed by the other end.
+					log.Printf("Error: remote connection closed. (%s)", err)
+					decodeErrorChannel <- err
+					return
+				} else {
+					// Send error to decodeErrorChannel and log it.
+					decodeErrorChannel <- err
+					log.Printf("Error while decoding: %s", err)
+					return
+				}
 			}
 			// Update the message with the sender's address and send it to the receive channel.
 			msg.From = conn.RemoteAddr().String()
