@@ -68,9 +68,9 @@ send <- message
 
 This basic example demonstrates how to set up a simple server-client communication using `netchan`. Remember to handle errors appropriately and ensure that your network addresses and ports are configured correctly for your specific use case.
 
-## Understanding the Key Differences Between Netchan and Go Channels
+## Understanding the Key Differences Between Netchan and Go Channels in developement version
 
-netchan is  described as 'Go channels over the network,' but this is a bit misleading for beginners. In Go, channels are used for both communicating between processes and synchronizing them. However, this early version of netchan is designed primarily for communication, not synchronization. This distinction is important to understand: while Go channels help coordinate process timing, netchan focuses on sending and receiving data across networks. We're aiming to include both communication and synchronization in netchan eventually, but currently, its synchronization capability isn't fully developed or tested.
+netchan is  described as 'Go channels over the network / Quantum network channels,' but this is a bit misleading for beginners. In Go, channels are used for both communicating between processes and synchronizing them (quantum behaviour). However, this early version of netchan is designed primarily for communication, not synchronization. This distinction is important to understand: while Go channels help coordinate process timing (quantum behaviour), netchan dev version focuses on sending and receiving data across networks. We're aiming to include both communication and synchronization (quantum behaviour) in netchan eventually, but currently, its synchronization capability isn't fully developed and tested.
 
 ## Documentation
 - [General Goals and Principles, Package Structure and Implementation](wiki/README.md)
