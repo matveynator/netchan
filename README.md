@@ -2,7 +2,7 @@
 
 
 
-# Quantum network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
+# "Quantum" network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
 Secure by default. Ready for clusters. Use standard "quantum" go channels but for communication across different machines. Capable of sending and receiving various data types, including channels. Limited synchronization "quantum" capability (in developement).
 
 > [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
