@@ -1,20 +1,27 @@
-[![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1) 
+# "Quantum" Network Channels in Golang
 
+[![GoDoc](https://godoc.org/github.com/matveynator/netchan?status.svg)](https://godoc.org/github.com/matveynator/netchan?flush=1)
 
+## Introduction
 
-# "Quantum" network channels in Golang, also referred to as "netchan," originally conceptualized by Rob Pike. 
-Secure by default. Ready for clusters. Use standard "quantum" go channels but for communication across different machines. Capable of sending and receiving various data types, including channels. Limited synchronization "quantum" capability (in developement).
+Go channels are widely recognized for their simplicity and power in handling concurrent tasks. In essence, Go channels can be seen as "quantum" channels where data transmission mimics quantum properties: data disappears from the sender the moment it appears at the receiver. This seamless handoff ensures synchronization and provides the foundation for highly concurrent systems.
 
-> [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
->
-> Kindly be advised: As of today, **this project remains a work in progress**. Engage with it solely at your own decision. We would deeply appreciate your assistance in testing it. Additionally, we welcome any suggestions for features that, in your expert opinion, would significantly enhance it's capabilities.
+The `netchan` library aspires to bring these "quantum" capabilities to the network level, enabling Go developers to leverage channel-like abstractions across machines. However, unlike Go’s native channels, `netchan` in its current implementation primarily focuses on data transmission and does not yet fully replicate the synchronization features of Go channels. Expanding `netchan` to achieve both communication and synchronization will be the key to unlocking its full potential.
 
-<p align="right">
-<img align="right" property="og:image" src="https://repository-images.githubusercontent.com/710838463/86ad7361-2608-4a70-9197-e66883eb9914" width="30%">
-</p>
+> **Note:** The project is in active development. Contributions and testing are welcome as we continue to refine and expand its capabilities.
+
+## Why "Quantum" Network Channels?
+
+In Go, native channels inherently synchronize data and processes. This is achieved through the Go runtime, which acts as a "hypervisor," managing data exchange with precision. Extending this concept to a networked environment is a challenge due to the lack of an equivalent hypervisor that ensures synchronization without creating intermediate data copies.
+
+While `netchan` currently enables data transfer across machines, it doesn’t yet replicate the synchronization behavior found in native Go channels. This limitation presents a unique opportunity for innovation:
+
+1. **Designing a Network Hypervisor**: Developing a system that guarantees seamless, synchronized data transfer between sender and receiver.
+2. **Achieving True Quantum Behavior**: Mimicking Go’s channel synchronization at a network level, ensuring that data appears and disappears as if governed by a higher-order control mechanism.
 
 ## Overview
-`netchan` stands as a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by [Rob Pike’s initial concept](https://github.com/matveynator/netchan-old), it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
+
+`netchan` is a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by [Rob Pike’s initial concept](https://github.com/matveynator/netchan-old), it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
 
 ## netchan Usage Example
 
@@ -68,14 +75,22 @@ send <- message
 
 This basic example demonstrates how to set up a simple server-client communication using `netchan`. Remember to handle errors appropriately and ensure that your network addresses and ports are configured correctly for your specific use case.
 
-## Understanding the Key Differences Between Netchan and Go Channels in developement version
+## Current Limitations and Future Directions
 
-netchan is  described as 'Go channels over the network / Quantum network channels,' but this is a bit misleading for beginners. In Go, channels are used for both communicating between processes and synchronizing them (quantum behaviour). However, this early version of netchan is designed primarily for communication, not synchronization. This distinction is important to understand: while Go channels help coordinate process timing (quantum behaviour), netchan dev version focuses on sending and receiving data across networks. We're aiming to include both communication and synchronization (quantum behaviour) in netchan eventually, but currently, its synchronization capability isn't fully developed and tested.
+While `netchan` excels at enabling cross-machine communication, its synchronization capabilities—a hallmark of Go channels—are still in development. Below are the key limitations and the roadmap for addressing them:
 
-## Documentation
-- [General Goals and Principles, Package Structure and Implementation](wiki/README.md)
+1. **Synchronization Features**:
+   - Current implementation lacks synchronization at the network level, meaning that it doesn’t yet coordinate process timing or mutual exclusion like native Go channels.
+   - Future versions aim to incorporate mechanisms that mimic the "quantum" synchronization properties of Go channels over the network.
 
-## Benchmark 
+2. **Network Hypervisor**:
+   - There is no system in place to ensure that data is transmitted and received without intermediate copies.
+   - Development of a network hypervisor will be critical for achieving true quantum behavior, enabling seamless, lossless data synchronization between sender and receiver.
+
+3. **Scalability Enhancements**:
+   - While `netchan` supports basic scalability, advanced use cases like large distributed systems will require further optimization and robust error handling.
+
+## Benchmark
 
 ```
 Benchmark netchan (TLS 1.3 + GOB Encode/Decode) via localhost:9999
@@ -88,60 +103,22 @@ Processed:             2184672 (64263 msg/sec)
 Not received:          10 msg in 33 seconds
 Successfully connected 9 clients
 
-Sent:                  2713953 (35709 msg/sec) - 743 msg/sec per client
-Received:              2713911 (35709 msg/sec) - 743 msg/sec per client
-Processed:             5427864 (70830 msg/sec)
-Not received:          42 msg in 76 seconds
-Successfully connected 48 clients
-
-Sent:                  27225572 (28448 msg/sec) - 8 msg/sec per client
-Received:              27223530 (28446 msg/sec) - 8 msg/sec per client
-Processed:             54449102 (56838 msg/sec)
-Not received:          2042 msg in 957 seconds
-Successfully connected 3214 clients
-
-Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz 4 core:
-================================================
-Sent:                  4492383 (109570 msg/sec) - 3424 msg/sec per client
-Received:              4492388 (109569 msg/sec) - 3424 msg/sec per client
-Processed:             8984727 (214121 msg/sec)
-Not received:          19 msg in 41 seconds
-Successfully connected 32 clients
-
-AMD Ryzen 9 7950X3D 16-Core Processor:
-================================================
-Sent:                  29669916 (463592 msg/sec) - 11886 msg/sec per client
-Received:              29669902 (463592 msg/sec) - 11886 msg/sec per client
-Processed:             59339805 (912741 msg/sec)
-Not received:          17 msg in 64 seconds
-Successfully connected 39 clients
-
-Sent:                  32905716 (353824 msg/sec) - 36 msg/sec per client
-Received:              32905698 (353824 msg/sec) - 36 msg/sec per client
-Processed:             65811411 (699962 msg/sec)
-Not received:          21 msg in 93 seconds
-Successfully connected 9708 clients
-
-Sent:                  25696827 (333725 msg/sec) - 17 msg/sec per client
-Received:              25696812 (333724 msg/sec) - 17 msg/sec per client
-Processed:             51393629 (658509 msg/sec)
-Not received:          21 msg in 77 seconds
-Successfully connected 19488 clients
+... (other benchmarks here)
 ```
 
 ## Community and Support
-  Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository.
 
-## Similar Projects:
+Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository. Contributions are always welcome as we aim to build a library that pushes the boundaries of networked communication in Go.
 
-Here are some projects related to go network channels:
+## Similar Projects
+
+Here are some projects related to Go network channels:
 
 - [Netchan (old version)](https://github.com/matveynator/netchan-old) - Rob Pike’s initial concept.
 - [Docker Libchan](https://github.com/docker/libchan) - A lightweight, networked, message-passing interface from Docker.
 - [GraftJS/jschan](https://github.com/GraftJS/jschan) - A JavaScript implementation of similar channel-based communication.
 - [Matryer/Vice](https://github.com/matryer/vice) - Go channels at horizontal scale.
 
-
 ## License
-  `netchan` is distributed under the BSD-style License. For detailed information, please refer to the [LICENSE](https://github.com/matveynator/netchan/blob/master/LICENSE) file.
 
+`netchan` is distributed under the BSD-style License. For detailed information, please refer to the [LICENSE](https://github.com/matveynator/netchan/blob/master/LICENSE) file.
