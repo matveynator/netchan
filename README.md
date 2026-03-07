@@ -25,6 +25,20 @@ While `netchan` currently enables data transfer across machines, it does not yet
 
 For more details on implementation, refer to the [Documentation](wiki/README.md).
 
+## Installation
+
+```bash
+go get github.com/matveynator/netchan@latest
+```
+
+The module path for imports is:
+
+```go
+import "github.com/matveynator/netchan"
+```
+
+For release/versioning details, see [Go Modules compatibility](docs/go-modules.md).
+
 ## netchan Usage Example
 
 This guide provides a basic example of how to use the `netchan` package for setting up simple server-client communication in Go. Note that `message` can be any type of data, including a Go channel (`chan`).
