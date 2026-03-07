@@ -21,9 +21,22 @@ While `netchan` currently enables data transfer across machines, it does not yet
 
 ## Overview
 
+## Installation
+
+```bash
+go get github.com/matveynator/netchan@latest
+```
+
+## Import Path
+
+```go
+import "github.com/matveynator/netchan"
+```
+
+
 `netchan` is a robust library for the Go programming language, offering convenient and secure abstractions for network channel interactions. Inspired by [Rob Pike’s initial concept](https://github.com/matveynator/netchan-old), it aims to deliver an interface that resonates with the simplicity and familiarity of Go’s native channels.
 
-For more details on implementation, refer to the [Documentation](wiki/README.md).
+For more details on implementation, refer to the [Documentation](docs/README.md).
 
 ## netchan Usage Example
 
@@ -112,7 +125,7 @@ Successfully connected 9 clients
 
 Should you have inquiries or suggestions, feel free to open an [issue](https://github.com/matveynator/netchan/issues) in our GitHub repository. Contributions are always welcome as we aim to build a library that pushes the boundaries of networked communication in Go.
 
-For general goals, package structure, and implementation details, visit the [General Documentation](wiki/README.md).
+For general goals, package structure, and implementation details, visit the [General Documentation](docs/README.md).
 
 ## Similar Projects
 
@@ -126,3 +139,16 @@ Here are some projects related to Go network channels:
 ## License
 
 `netchan` is distributed under the BSD-style License. For detailed information, please refer to the [LICENSE](https://github.com/matveynator/netchan/blob/master/LICENSE).
+
+## Examples
+
+Standalone runnable examples are located under:
+
+- `examples/localhost/advanced-multi-client`
+- `examples/localhost/simple-multi-client`
+- `examples/localhost/cluster`
+- `examples/localhost/cluster-bench`
+- `examples/internet/cluster-benchmark/client`
+- `examples/internet/cluster-benchmark/server`
+
+Run any example with `go run ./<example-path>`.

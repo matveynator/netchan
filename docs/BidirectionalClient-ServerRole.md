@@ -1,4 +1,4 @@
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 
 "Bidirectional Client-Server Role" in netchan refers to a design approach where each node in the network can function as both a client and a server. This concept is significant in distributed network applications, especially those designed for robustness and flexibility. Here's how it applies to our case:
 
@@ -14,5 +14,5 @@
 
 In summary, the "Bidirectional Client-Server Role" in our netchan library is about designing each network participant to function effectively as both a client and a server. This design enhances the network's flexibility, scalability, resilience, and efficiency, which is particularly beneficial in distributed and dynamic network environments.
 
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 

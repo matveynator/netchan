@@ -1,4 +1,4 @@
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 
 "Unified Application Architecture" refers to a design philosophy where all components of a networked application (each client and server) are developed and function as parts of a single, cohesive system. This concept is particularly relevant given the bidirectional client-server roles and the distributed nature of the system. Here's what it entails:
 
@@ -14,5 +14,5 @@
 
 In summary, "Unified Application Architecture" in our plan for the netchan library signifies an approach where each participating node is an integral part of a larger system, working in unison towards common goals, thus creating a more robust, efficient, and cohesive networked application.
 
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 

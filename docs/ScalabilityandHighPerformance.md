@@ -1,4 +1,4 @@
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 
 "Scalability and High Performance" refers to two key aspects of the library's design and functionality:
 
@@ -16,5 +16,5 @@
 
 In summary, "Scalability and High Performance" in netchan library context ensures that as the number of users or the volume of data increases (scalability), the library can handle these increased demands without significant losses in speed and efficiency (high performance). This combination is crucial for a network library intended for use in distributed systems where both the scale and performance are critical for the overall system's reliability and effectiveness.
 
-[Go back](/wiki/README.md#general-goals-and-principles)
+[Go back](/docs/README.md#general-goals-and-principles)
 
