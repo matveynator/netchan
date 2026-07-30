@@ -11,22 +11,30 @@ type LogData struct {
 }
 
 // LogTask is a channel that transmits LogData instances for logging.
-var LogTask chan LogData
+var LogTask = make(chan LogData)
 
-// init sets up the logger and initializes the LogTask channel.
-func init() {
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds) // Configure logger to include standard flags and microsecond precision
-	LogTask = make(chan LogData)                    // Initialize the LogTask channel
+var logWorkerStarted = make(chan struct{}, 1)
+
+// startErrorLogWorker starts logging when NetChan has a message to report.
+// Package imports must remain free of background work and global logger changes.
+func startErrorLogWorker() {
+	select {
+	case logWorkerStarted <- struct{}{}:
+		go ErrorLogWorker()
+	default:
+	}
 }
 
 // Printonce sends a log message to LogTask that should not be repeated.
 func Printonce(message string) {
+	startErrorLogWorker()
 	data := LogData{logMessage: message, canRepeat: false} // Create a LogData instance with the message and no repeat
 	LogTask <- data                                        // Send the LogData instance to the LogTask channel
 }
 
 // Println sends a log message to LogTask that can be repeated.
 func Println(message string) {
+	startErrorLogWorker()
 	data := LogData{logMessage: message, canRepeat: true} // Create a LogData instance with the message and allow repeat
 	LogTask <- data                                       // Send the LogData instance to the LogTask channel
 }
@@ -34,8 +42,6 @@ func Println(message string) {
 // ErrorLogWorker is a background worker function that processes log messages from the LogTask channel.
 func ErrorLogWorker() {
 	var previousLogMessage string // Stores the last logged message to prevent repeats
-
-	log.Println("Started netchan logging worker in background.") // Initial log indicating the worker has started
 
 	for {
 		select {
@@ -52,9 +58,4 @@ func ErrorLogWorker() {
 			}
 		}
 	}
-}
-
-// init starts the ErrorLogWorker function as a goroutine.
-func init() {
-	go ErrorLogWorker() // Start the ErrorLogWorker as a goroutine
 }
