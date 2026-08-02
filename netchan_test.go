@@ -1270,7 +1270,7 @@ func waitForClose[T any](t *testing.T, channel <-chan T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-// BEGIN: Version 5 binary protocol tests
+// BEGIN: Version 2 binary protocol tests
 ////////////////////////////////////////////////////////////////////////////////
 
 type binaryProtocolFixture struct {
@@ -1295,6 +1295,19 @@ type capabilityLimitPayload struct {
 }
 
 type oversizedArrayType [maximumCollectionLength + 1]byte
+
+func TestProtocolVersionIsSecondPublishedVersion(t *testing.T) {
+	if protocolVersion != 2 {
+		t.Fatalf("protocol version = %d, want 2", protocolVersion)
+	}
+
+	for _, unsupportedVersion := range []uint16{1, 3, 4, 5} {
+		frame := networkFrame{Version: unsupportedVersion, Kind: frameHeartbeat, SessionID: "session"}
+		if err := validateNetworkFrame(frame); err == nil {
+			t.Fatalf("protocol version %d was accepted", unsupportedVersion)
+		}
+	}
+}
 
 func (value explicitBinaryValue) MarshalBinary() ([]byte, error) {
 	encoded := make([]byte, 8)
@@ -1674,5 +1687,5 @@ func FuzzDecodeNetworkFrame(f *testing.F) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// END: Version 5 binary protocol tests
+// END: Version 2 binary protocol tests
 ////////////////////////////////////////////////////////////////////////////////

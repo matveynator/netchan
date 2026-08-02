@@ -20,9 +20,9 @@
 //
 //  1. TLS certificate support
 //     Certificate generation and TLS configuration helpers.
-//  2. Version 5 protocol model
+//  2. Version 2 protocol model
 //     Wire constants, frame types, identifiers, directions, and protocol errors.
-//  3. Version 5 binary wire framing
+//  3. Version 2 binary wire framing
 //     Explicit length-prefixed encoders, decoders, and bounded binary helpers.
 //  4. Public native channel facade
 //     Listen, Dial, native channel directions, configuration, and strict Deliver.
@@ -135,11 +135,11 @@ func generateTLSConfig() (*tls.Config, error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-// BEGIN: Version 5 protocol model
+// BEGIN: Version 2 protocol model
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	protocolVersion             = 5
+	protocolVersion             = 2
 	maximumPendingFrames        = 1024
 	channelFrameBufferSize      = maximumPendingFrames + 32
 	maximumValueCapabilities    = 16
@@ -445,11 +445,11 @@ func validateHandshake(frame networkFrame, expectedKind frameKind) error {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// END: Version 5 protocol model
+// END: Version 2 protocol model
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-// BEGIN: Version 5 binary wire framing
+// BEGIN: Version 2 binary wire framing
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -815,7 +815,7 @@ func (reader *wireReader) finish() error {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// END: Version 5 binary wire framing
+// END: Version 2 binary wire framing
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
