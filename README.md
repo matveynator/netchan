@@ -123,6 +123,7 @@ import "github.com/matveynator/netchan/v2"
 package main
 
 import (
+	"crypto/tls"
 	"log"
 
 	"github.com/matveynator/netchan/v2"
@@ -137,7 +138,19 @@ func serveConnection(connection *netchan.Channel[string]) {
 }
 
 func main() {
-	listener, err := netchan.Listen[string]("127.0.0.1:9876")
+	certificate, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		log.Fatal(err)
+	}
+	serverTLS := &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	listener, err := netchan.Listen[string](
+		"127.0.0.1:9876",
+		netchan.Config{TLS: serverTLS},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -155,14 +168,34 @@ func main() {
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/matveynator/netchan/v2"
 )
 
 func main() {
-	connection, err := netchan.Dial[string]("127.0.0.1:9876")
+	certificatePEM, err := os.ReadFile("ca.crt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	rootCertificates := x509.NewCertPool()
+	if !rootCertificates.AppendCertsFromPEM(certificatePEM) {
+		log.Fatal("server CA certificate is invalid")
+	}
+	clientTLS := &tls.Config{
+		RootCAs:    rootCertificates,
+		ServerName: "netchan.example",
+		MinVersion: tls.VersionTLS13,
+	}
+
+	connection, err := netchan.Dial[string](
+		"127.0.0.1:9876",
+		netchan.Config{TLS: clientTLS},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -490,9 +523,9 @@ NetChan делает эти границы явными через `Deliver`, `D
 
 ## TLS
 
-Вызовы без `Config` создают самоподписанный TLS-сертификат. Трафик шифруется, но
-личность peer не проверяется. Такой режим подходит для localhost и тестирования,
-но не защищает production-соединение от подмены.
+Каждый `Listen` и `Dial` требует `Config.TLS`. Вызов без TLS-конфигурации
+завершается ошибкой, чтобы приложение не могло случайно включить шифрование
+без аутентификации peer.
 
 Production-конфигурация использует обычный `*tls.Config`:
 

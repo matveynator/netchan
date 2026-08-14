@@ -18,121 +18,38 @@
 //
 // Logical block index
 //
-//  1. TLS certificate support
-//     Certificate generation and TLS configuration helpers.
-//  2. Version 2 protocol model
+//  1. Version 2 protocol model
 //     Wire constants, frame types, identifiers, directions, and protocol errors.
-//  3. Version 2 binary wire framing
+//  2. Version 2 binary wire framing
 //     Explicit length-prefixed encoders, decoders, and bounded binary helpers.
-//  4. Public native channel facade
+//  3. Public native channel facade
 //     Listen, Dial, native channel directions, configuration, and strict Deliver.
-//  5. Node, listener, and session discovery
+//  4. Node, listener, and session discovery
 //     Internal node configuration, listeners, connection setup, and registries.
-//  6. Logical session actor and reconnection
+//  5. Logical session actor and reconnection
 //     Session commands, sequencing, acknowledgements, leases, and reattachment.
-//  7. Native channel bridges and channel capabilities
+//  6. Native channel bridges and channel capabilities
 //     Root bridges, directional capability transfer, and binary payload coding.
 package netchan
 
 import (
 	"bufio"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"net"
 	"os"
 	"reflect"
 	"time"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-// BEGIN: TLS certificate support
-////////////////////////////////////////////////////////////////////////////////
-
-// The no-configuration API needs an ephemeral identity so transport encryption
-// remains available even when the caller has not provisioned certificates.
-func generateSelfSignedCert() ([]byte, []byte, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	notBefore := time.Now()
-	notAfter := notBefore.Add(50 * 365 * 24 * time.Hour)
-
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"github.com/matveynator/netchan"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
-	privBytes, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return nil, nil, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
-
-	return certPEM, keyPEM, nil
-}
-
-// Self-signed mode encrypts traffic but deliberately does not authenticate the
-// peer; callers cross that boundary explicitly by supplying Config.TLS.
-func generateTLSConfig() (*tls.Config, error) {
-	certPEM, keyPEM, err := generateSelfSignedCert()
-	if err != nil {
-		return nil, err
-	}
-
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true, // #nosec G402 -- self-signed compatibility mode deliberately provides encryption without peer identity.
-	}
-
-	return tlsConfig, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// END: TLS certificate support
-////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN: Version 2 protocol model
@@ -824,9 +741,10 @@ func (reader *wireReader) finish() error {
 
 const rootChannelName = "netchan.root"
 
-// Config contains the optional boundary settings for Listen and Dial. Capacity
-// applies only to Channel.Send; Channel.Receive is intentionally unbuffered so
-// Deliver can observe the remote application's actual receive operation.
+// Config contains the boundary settings for Listen and Dial. TLS is required
+// so peer authentication cannot be omitted accidentally. Capacity applies only
+// to Channel.Send; Channel.Receive is intentionally unbuffered so Deliver can
+// observe the remote application's actual receive operation.
 type Config struct {
 	Capacity int
 	TLS      *tls.Config
@@ -940,9 +858,7 @@ func (listener *Listener[T]) Close() error {
 	return listener.node.Close()
 }
 
-// Listen starts a TLS listener for channels carrying T. Omitting Config enables
-// unauthenticated self-signed TLS and is suitable only when peer identity is not
-// a security requirement.
+// Listen starts an authenticated TLS listener for channels carrying T.
 func Listen[T any](address string, configurations ...Config) (*Listener[T], error) {
 	configuration, err := normalizeConfig(configurations)
 	if err != nil {
@@ -959,7 +875,7 @@ func Listen[T any](address string, configurations ...Config) (*Listener[T], erro
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(serverTLS, insecureClientTLSConfiguration()))
+	node, err := newNode(withTLSConfigs(serverTLS, unusedTLSConfiguration()))
 	if err != nil {
 		return nil, err
 	}
@@ -998,7 +914,7 @@ func Dial[T any](address string, configurations ...Config) (*Channel[T], error) 
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(unusedServerTLSConfiguration(), clientTLS))
+	node, err := newNode(withTLSConfigs(unusedTLSConfiguration(), clientTLS))
 	if err != nil {
 		return nil, err
 	}
@@ -1030,13 +946,13 @@ func normalizeConfig(configurations []Config) (Config, error) {
 	if configuration.Capacity < 0 {
 		return Config{}, errors.New("netchan: channel capacity cannot be negative")
 	}
+	if configuration.TLS == nil {
+		return Config{}, errors.New("netchan: TLS configuration is required")
+	}
 	return configuration, nil
 }
 
 func roleTLSConfiguration(configuration *tls.Config) (*tls.Config, error) {
-	if configuration == nil {
-		return generateTLSConfig()
-	}
 	cloned := configuration.Clone()
 	if cloned.MinVersion == 0 {
 		cloned.MinVersion = tls.VersionTLS13
@@ -1044,11 +960,7 @@ func roleTLSConfiguration(configuration *tls.Config) (*tls.Config, error) {
 	return cloned, nil
 }
 
-func insecureClientTLSConfiguration() *tls.Config {
-	return &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true} // #nosec G402 -- the documented self-signed mode has no identity to verify.
-}
-
-func unusedServerTLSConfiguration() *tls.Config {
+func unusedTLSConfiguration() *tls.Config {
 	return &tls.Config{MinVersion: tls.VersionTLS13}
 }
 
@@ -1083,18 +995,6 @@ type nodeOption func(*nodeConfiguration) error
 type nodeConfiguration struct {
 	serverTLS *tls.Config
 	clientTLS *tls.Config
-}
-
-func withInsecureDevelopmentTLS() nodeOption {
-	return func(configuration *nodeConfiguration) error {
-		developmentTLS, err := generateTLSConfig()
-		if err != nil {
-			return err
-		}
-		configuration.serverTLS = developmentTLS.Clone()
-		configuration.clientTLS = developmentTLS.Clone()
-		return nil
-	}
 }
 
 func withTLSConfigs(server, client *tls.Config) nodeOption {

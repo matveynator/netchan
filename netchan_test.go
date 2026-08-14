@@ -2,9 +2,17 @@ package netchan
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"reflect"
@@ -16,6 +24,55 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN: Public native channel tests
 ////////////////////////////////////////////////////////////////////////////////
+
+func testTLSConfigurations(t *testing.T) (*tls.Config, *tls.Config) {
+	t.Helper()
+
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{Organization: []string{"NetChan test"}},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage: x509.KeyUsageKeyEncipherment |
+			x509.KeyUsageDigitalSignature |
+			x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	certificateDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKeyDER, err := x509.MarshalECPrivateKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER})
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privateKeyDER})
+	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCertificates := x509.NewCertPool()
+	if !rootCertificates.AppendCertsFromPEM(certificatePEM) {
+		t.Fatal("failed to trust test certificate")
+	}
+
+	serverTLS := &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13}
+	clientTLS := &tls.Config{RootCAs: rootCertificates, ServerName: "localhost", MinVersion: tls.VersionTLS13}
+	return serverTLS, clientTLS
+}
 
 func TestChannelCapacityAppliesOnlyToSend(t *testing.T) {
 	channel := newChannel[int](7)
@@ -30,6 +87,9 @@ func TestChannelCapacityAppliesOnlyToSend(t *testing.T) {
 	}
 	if _, err := normalizeConfig([]Config{{}, {}}); err == nil {
 		t.Fatal("multiple configurations were accepted")
+	}
+	if _, err := normalizeConfig(nil); err == nil {
+		t.Fatal("missing TLS configuration was accepted")
 	}
 	var zero Channel[int]
 	if err := zero.Deliver(1); !errors.Is(err, ErrChannelClosed) {
@@ -883,12 +943,13 @@ func TestPublicListenAndDial(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
 	}
-	listener, err := Listen[string]("127.0.0.1:0")
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	listener, err := Listen[string]("127.0.0.1:0", Config{TLS: serverTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-	client, err := Dial[string](listener.Address)
+	client, err := Dial[string](listener.Address, Config{TLS: clientTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -909,16 +970,13 @@ func TestPublicConfigAndListenerLifecycle(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
 	}
-	serverTLS, err := generateTLSConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
+	serverTLS, clientTLS := testTLSConfigurations(t)
 	listener, err := Listen[int]("127.0.0.1:0", Config{Capacity: 5, TLS: serverTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-	client, err := Dial[int](listener.Address, Config{Capacity: 3, TLS: insecureClientTLSConfiguration()})
+	client, err := Dial[int](listener.Address, Config{Capacity: 3, TLS: clientTLS})
 	if err != nil {
 		_ = listener.Close()
 		t.Fatal(err)
@@ -953,18 +1011,19 @@ func TestPublicClientsRemainIndependent(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
 	}
-	listener, err := Listen[string]("127.0.0.1:0")
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	listener, err := Listen[string]("127.0.0.1:0", Config{TLS: serverTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = listener.Close() })
-	firstClient, err := Dial[string](listener.Address)
+	firstClient, err := Dial[string](listener.Address, Config{TLS: clientTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = firstClient.Abort() })
 	firstServer := receiveWithTimeout(t, listener.Channels)
-	secondClient, err := Dial[string](listener.Address)
+	secondClient, err := Dial[string](listener.Address, Config{TLS: clientTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1006,11 +1065,12 @@ func TestPublicListenerCloseTerminatesActiveChannel(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
 	}
-	listener, err := Listen[int]("127.0.0.1:0")
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	listener, err := Listen[int]("127.0.0.1:0", Config{TLS: serverTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := Dial[int](listener.Address)
+	client, err := Dial[int](listener.Address, Config{TLS: clientTLS})
 	if err != nil {
 		_ = listener.Close()
 		t.Fatal(err)
@@ -1030,7 +1090,8 @@ func TestPublicListenerCloseInterruptsIncompleteHandshake(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
 	}
-	listener, err := Listen[int]("127.0.0.1:0")
+	serverTLS, _ := testTLSConfigurations(t)
+	listener, err := Listen[int]("127.0.0.1:0", Config{TLS: serverTLS})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1109,11 +1170,12 @@ func connectedTestSessions(t *testing.T) (*node, *node, *session, *session) {
 
 func connectedTestSessionsWithObservation(t *testing.T, observed chan<- observedNetworkFrame) (*node, *node, *session, *session) {
 	t.Helper()
-	serverNode, err := newNode(withInsecureDevelopmentTLS())
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	serverNode, err := newNode(withTLSConfigs(serverTLS, clientTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientNode, err := newNode(withInsecureDevelopmentTLS())
+	clientNode, err := newNode(withTLSConfigs(serverTLS, clientTLS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1357,7 +1419,8 @@ func TestBinaryNetworkFramesRoundTrip(t *testing.T) {
 }
 
 func TestUnknownResumeDoesNotCreateServerSession(t *testing.T) {
-	node, err := newNode(withInsecureDevelopmentTLS())
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	node, err := newNode(withTLSConfigs(serverTLS, clientTLS))
 	if err != nil {
 		t.Fatal(err)
 	}

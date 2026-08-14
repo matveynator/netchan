@@ -31,6 +31,12 @@ jobs:
           cache: true
       - name: Test packages with race detector
         run: go test -race -count=1 ./...
+      - name: Test public TLS boundary
+        env:
+          NETCHAN_NETWORK_TEST: "1"
+        run: >-
+          go test -race -count=1 .
+          -run '^TestPublic(ListenAndDial|ConfigAndListenerLifecycle|ClientsRemainIndependent|ListenerCloseTerminatesActiveChannel|ListenerCloseInterruptsIncompleteHandshake)$'
       - name: Vet packages
         run: go vet ./...
 
