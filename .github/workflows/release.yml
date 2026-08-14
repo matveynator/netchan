@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows:
+      - Security
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  release:
+    name: release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Select verified commit
+        id: commit
+        env:
+          WORKFLOW_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_COMMIT: ${{ github.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${WORKFLOW_COMMIT}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "sha=${DISPATCH_COMMIT}" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Checkout verified commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+          fetch-depth: 0
+      - name: Validate release request
+        id: release
+        env:
+          RELEASE_COMMIT: ${{ steps.commit.outputs.sha }}
+        run: |
+          subject="$(git show -s --format=%s "${RELEASE_COMMIT}")"
+          if [ "${subject}" != "stable release" ]; then
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "${version}" =~ ^v([1-9][0-9]*)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "VERSION must contain a stable semantic version such as v2.0.0" >&2
+            exit 1
+          fi
+          if [ "${BASH_REMATCH[1]}" != "2" ]; then
+            echo "The main branch publishes only major version 2" >&2
+            exit 1
+          fi
+
+          module_path="$(go list -m)"
+          if [ "${module_path}" != "github.com/matveynator/netchan/v2" ]; then
+            echo "go.mod module path does not match major version 2" >&2
+            exit 1
+          fi
+          if git rev-parse --verify --quiet "refs/tags/${version}" >/dev/null; then
+            echo "Release tag ${version} already exists" >&2
+            exit 1
+          fi
+
+          echo "publish=true" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Create immutable tag
+        if: steps.release.outputs.publish == 'true'
+        env:
+          RELEASE_COMMIT: ${{ steps.commit.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_VERSION}" "${RELEASE_COMMIT}" -m "${RELEASE_VERSION}"
+          git push origin "refs/tags/${RELEASE_VERSION}"
+      - name: Publish GitHub Release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: >-
+          gh release create "${RELEASE_VERSION}"
+          --verify-tag
+          --title "NetChan ${RELEASE_VERSION}"
+          --generate-notes
+          --latest

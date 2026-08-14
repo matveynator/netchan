@@ -124,7 +124,7 @@ func generateTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // #nosec G402 -- self-signed compatibility mode deliberately provides encryption without peer identity.
 	}
 
 	return tlsConfig, nil
@@ -482,7 +482,7 @@ func (encoder *binaryFrameEncoder) encode(frame networkFrame) error {
 	}
 
 	var size [4]byte
-	binary.BigEndian.PutUint32(size[:], uint32(len(payload)))
+	binary.BigEndian.PutUint32(size[:], uint32(len(payload))) // #nosec G115 -- the frame limit above is smaller than uint32.
 	if _, err := encoder.writer.Write(size[:]); err != nil {
 		return err
 	}
@@ -698,7 +698,7 @@ func (writer *wireWriter) string(value string, maximum int, name string) {
 		writer.fail(fmt.Errorf("netchan: %s exceeds maximum size", name))
 		return
 	}
-	writer.uint16(uint16(len(value)))
+	writer.uint16(uint16(len(value))) // #nosec G115 -- both maximum and uint16 bounds are checked above.
 	writer.bytes = append(writer.bytes, value...)
 }
 
@@ -707,7 +707,7 @@ func (writer *wireWriter) data(value []byte, maximum int, name string) {
 		writer.fail(fmt.Errorf("%w: %s exceeds maximum size", ErrPayloadLimit, name))
 		return
 	}
-	writer.uint32(uint32(len(value)))
+	writer.uint32(uint32(len(value))) // #nosec G115 -- both maximum and uint32 bounds are checked above.
 	writer.bytes = append(writer.bytes, value...)
 }
 
@@ -796,11 +796,11 @@ func (reader *wireReader) string(maximum int, name string) string {
 
 func (reader *wireReader) data(maximum int, name string) []byte {
 	size := uint64(reader.uint32())
-	if size > uint64(maximum) || size > uint64(len(reader.bytes)-reader.offset) {
+	if size > uint64(maximum) || size > uint64(len(reader.bytes)-reader.offset) { // #nosec G115 -- maximum and remaining length are non-negative protocol bounds.
 		reader.fail(fmt.Errorf("netchan: invalid %s size", name))
 		return nil
 	}
-	value := reader.take(int(size), name)
+	value := reader.take(int(size), name) // #nosec G115 -- size is bounded by the remaining in-memory frame above.
 	return append([]byte(nil), value...)
 }
 
@@ -1045,7 +1045,7 @@ func roleTLSConfiguration(configuration *tls.Config) (*tls.Config, error) {
 }
 
 func insecureClientTLSConfiguration() *tls.Config {
-	return &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true}
+	return &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true} // #nosec G402 -- the documented self-signed mode has no identity to verify.
 }
 
 func unusedServerTLSConfiguration() *tls.Config {
@@ -2624,7 +2624,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 					continue
 				}
 				internalType := reflect.ChanOf(reflect.BothDir, command.channelType.Elem())
-				allocation := uint64(command.capacity) * uint64(command.channelType.Elem().Size())
+				allocation := uint64(command.capacity) * uint64(command.channelType.Elem().Size()) // #nosec G115 -- command capacities are validated before admission.
 				if allocation > maximumCapabilityBytes || importedCapabilityBytes > maximumCapabilityBytes-allocation {
 					command.reply <- sessionReserveImportCapabilityResult{err: fmt.Errorf("%w: session capability allocation budget reached", ErrPayloadLimit)}
 					continue
@@ -3930,11 +3930,11 @@ func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map
 		writer.uint32(identifier)
 		return
 	}
-	identifier := uint32(len(seen) + 1)
+	identifier := uint32(len(seen) + 1) // #nosec G115 -- a schema is bounded by the maximum wire frame before transmission.
 	seen[valueType] = identifier
 	writer.byte(1)
 	writer.uint32(identifier)
-	writer.byte(byte(valueType.Kind()))
+	writer.byte(byte(valueType.Kind())) // #nosec G115 -- reflect.Kind is a byte-sized protocol enum.
 	writer.data([]byte(valueType.PkgPath()), maximumWireFrameSize, "type package path")
 	writer.data([]byte(valueType.Name()), maximumWireFrameSize, "type name")
 	if usesBinaryCodec(valueType) {
@@ -3946,16 +3946,16 @@ func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map
 	case reflect.Pointer, reflect.Slice:
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Array:
-		writer.uint64(uint64(valueType.Len()))
+		writer.uint64(uint64(valueType.Len())) // #nosec G115 -- reflect array lengths are non-negative.
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Map:
 		writeNetworkTypeSchema(writer, valueType.Key(), seen)
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Chan:
-		writer.byte(byte(valueType.ChanDir()))
+		writer.byte(byte(valueType.ChanDir())) // #nosec G115 -- reflect.ChanDir is a byte-sized protocol enum.
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Struct:
-		writer.uint32(uint32(valueType.NumField()))
+		writer.uint32(uint32(valueType.NumField())) // #nosec G115 -- a schema is bounded by the maximum wire frame before transmission.
 		for index := 0; index < valueType.NumField(); index++ {
 			field := valueType.Field(index)
 			writer.data([]byte(field.Name), maximumWireFrameSize, "field name")
@@ -4153,19 +4153,19 @@ func (encoder *binaryValueEncoder) encode(value reflect.Value, depth int) {
 			encoder.writer.byte(0)
 		}
 	case reflect.Int8:
-		encoder.writer.byte(byte(int8(value.Int())))
+		encoder.writer.byte(byte(int8(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int16:
-		encoder.writer.uint16(uint16(int16(value.Int())))
+		encoder.writer.uint16(uint16(int16(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int32:
-		encoder.writer.uint32(uint32(int32(value.Int())))
+		encoder.writer.uint32(uint32(int32(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int, reflect.Int64:
-		encoder.writer.uint64(uint64(value.Int()))
+		encoder.writer.uint64(uint64(value.Int())) // #nosec G115 -- two's-complement bits are preserved by the wire representation.
 	case reflect.Uint8:
-		encoder.writer.byte(byte(value.Uint()))
+		encoder.writer.byte(byte(value.Uint())) // #nosec G115 -- the reflect kind guarantees an 8-bit unsigned value.
 	case reflect.Uint16:
-		encoder.writer.uint16(uint16(value.Uint()))
+		encoder.writer.uint16(uint16(value.Uint())) // #nosec G115 -- the reflect kind guarantees a 16-bit unsigned value.
 	case reflect.Uint32:
-		encoder.writer.uint32(uint32(value.Uint()))
+		encoder.writer.uint32(uint32(value.Uint())) // #nosec G115 -- the reflect kind guarantees a 32-bit unsigned value.
 	case reflect.Uint, reflect.Uint64:
 		encoder.writer.uint64(value.Uint())
 	case reflect.Float32:
@@ -4181,7 +4181,7 @@ func (encoder *binaryValueEncoder) encode(value reflect.Value, depth int) {
 		encoder.writer.uint64(math.Float64bits(real(complexValue)))
 		encoder.writer.uint64(math.Float64bits(imag(complexValue)))
 	case reflect.String:
-		encoder.reserve(uint64(value.Len()))
+		encoder.reserve(uint64(value.Len())) // #nosec G115 -- reflect lengths are non-negative.
 		encoder.writer.data([]byte(value.String()), maximumWireFrameSize, "string")
 	case reflect.Pointer:
 		if value.IsNil() {
@@ -4287,7 +4287,7 @@ func (encoder *binaryValueEncoder) encodeChannel(channel reflect.Value) {
 		return
 	}
 	encoder.capabilityCount++
-	encoder.reserve(uint64(channel.Cap()) * uint64(channel.Type().Elem().Size()))
+	encoder.reserve(uint64(channel.Cap()) * uint64(channel.Type().Elem().Size())) // #nosec G115 -- native channel capacity is non-negative.
 	if encoder.writer.err != nil {
 		return
 	}
@@ -4466,13 +4466,13 @@ func (decoder *binaryValueDecoder) decode(destination reflect.Value, depth int) 
 		}
 		destination.SetBool(encoded == 1)
 	case reflect.Int8:
-		destination.SetInt(int64(int8(decoder.reader.byte())))
+		destination.SetInt(int64(int8(decoder.reader.byte()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int16:
-		destination.SetInt(int64(int16(decoder.reader.uint16())))
+		destination.SetInt(int64(int16(decoder.reader.uint16()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int32:
-		destination.SetInt(int64(int32(decoder.reader.uint32())))
+		destination.SetInt(int64(int32(decoder.reader.uint32()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int, reflect.Int64:
-		encoded := int64(decoder.reader.uint64())
+		encoded := int64(decoder.reader.uint64()) // #nosec G115 -- decoding restores the signed value from its wire bits.
 		if destination.OverflowInt(encoded) {
 			decoder.reader.fail(fmt.Errorf("netchan: integer overflows %s", destination.Type()))
 			return
@@ -4624,7 +4624,7 @@ func (decoder *binaryValueDecoder) decodeChannel(destination reflect.Value) {
 		decoder.reader.fail(err)
 		return
 	}
-	decoder.reserve(uint64(capacity) * uint64(destination.Type().Elem().Size()))
+	decoder.reserve(uint64(capacity) * uint64(destination.Type().Elem().Size())) // #nosec G115 -- capacity is validated as non-negative above.
 	if !validChannelDirection(direction) || direction != directionFromReflect(destination.Type().ChanDir()) {
 		decoder.reader.fail(errors.New("netchan: channel capability has an invalid direction"))
 		return
