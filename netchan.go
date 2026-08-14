@@ -18,121 +18,38 @@
 //
 // Logical block index
 //
-//  1. TLS certificate support
-//     Certificate generation and TLS configuration helpers.
-//  2. Version 2 protocol model
+//  1. Version 2 protocol model
 //     Wire constants, frame types, identifiers, directions, and protocol errors.
-//  3. Version 2 binary wire framing
+//  2. Version 2 binary wire framing
 //     Explicit length-prefixed encoders, decoders, and bounded binary helpers.
-//  4. Public native channel facade
+//  3. Public native channel facade
 //     Listen, Dial, native channel directions, configuration, and strict Deliver.
-//  5. Node, listener, and session discovery
+//  4. Node, listener, and session discovery
 //     Internal node configuration, listeners, connection setup, and registries.
-//  6. Logical session actor and reconnection
+//  5. Logical session actor and reconnection
 //     Session commands, sequencing, acknowledgements, leases, and reattachment.
-//  7. Native channel bridges and channel capabilities
+//  6. Native channel bridges and channel capabilities
 //     Root bridges, directional capability transfer, and binary payload coding.
 package netchan
 
 import (
 	"bufio"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"net"
 	"os"
 	"reflect"
 	"time"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-// BEGIN: TLS certificate support
-////////////////////////////////////////////////////////////////////////////////
-
-// The no-configuration API needs an ephemeral identity so transport encryption
-// remains available even when the caller has not provisioned certificates.
-func generateSelfSignedCert() ([]byte, []byte, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	notBefore := time.Now()
-	notAfter := notBefore.Add(50 * 365 * 24 * time.Hour)
-
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"github.com/matveynator/netchan"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
-	privBytes, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return nil, nil, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
-
-	return certPEM, keyPEM, nil
-}
-
-// Self-signed mode encrypts traffic but deliberately does not authenticate the
-// peer; callers cross that boundary explicitly by supplying Config.TLS.
-func generateTLSConfig() (*tls.Config, error) {
-	certPEM, keyPEM, err := generateSelfSignedCert()
-	if err != nil {
-		return nil, err
-	}
-
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true,
-	}
-
-	return tlsConfig, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// END: TLS certificate support
-////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN: Version 2 protocol model
@@ -482,7 +399,7 @@ func (encoder *binaryFrameEncoder) encode(frame networkFrame) error {
 	}
 
 	var size [4]byte
-	binary.BigEndian.PutUint32(size[:], uint32(len(payload)))
+	binary.BigEndian.PutUint32(size[:], uint32(len(payload))) // #nosec G115 -- the frame limit above is smaller than uint32.
 	if _, err := encoder.writer.Write(size[:]); err != nil {
 		return err
 	}
@@ -698,7 +615,7 @@ func (writer *wireWriter) string(value string, maximum int, name string) {
 		writer.fail(fmt.Errorf("netchan: %s exceeds maximum size", name))
 		return
 	}
-	writer.uint16(uint16(len(value)))
+	writer.uint16(uint16(len(value))) // #nosec G115 -- both maximum and uint16 bounds are checked above.
 	writer.bytes = append(writer.bytes, value...)
 }
 
@@ -707,7 +624,7 @@ func (writer *wireWriter) data(value []byte, maximum int, name string) {
 		writer.fail(fmt.Errorf("%w: %s exceeds maximum size", ErrPayloadLimit, name))
 		return
 	}
-	writer.uint32(uint32(len(value)))
+	writer.uint32(uint32(len(value))) // #nosec G115 -- both maximum and uint32 bounds are checked above.
 	writer.bytes = append(writer.bytes, value...)
 }
 
@@ -796,11 +713,11 @@ func (reader *wireReader) string(maximum int, name string) string {
 
 func (reader *wireReader) data(maximum int, name string) []byte {
 	size := uint64(reader.uint32())
-	if size > uint64(maximum) || size > uint64(len(reader.bytes)-reader.offset) {
+	if size > uint64(maximum) || size > uint64(len(reader.bytes)-reader.offset) { // #nosec G115 -- maximum and remaining length are non-negative protocol bounds.
 		reader.fail(fmt.Errorf("netchan: invalid %s size", name))
 		return nil
 	}
-	value := reader.take(int(size), name)
+	value := reader.take(int(size), name) // #nosec G115 -- size is bounded by the remaining in-memory frame above.
 	return append([]byte(nil), value...)
 }
 
@@ -824,9 +741,10 @@ func (reader *wireReader) finish() error {
 
 const rootChannelName = "netchan.root"
 
-// Config contains the optional boundary settings for Listen and Dial. Capacity
-// applies only to Channel.Send; Channel.Receive is intentionally unbuffered so
-// Deliver can observe the remote application's actual receive operation.
+// Config contains the boundary settings for Listen and Dial. TLS is required
+// so peer authentication cannot be omitted accidentally. Capacity applies only
+// to Channel.Send; Channel.Receive is intentionally unbuffered so Deliver can
+// observe the remote application's actual receive operation.
 type Config struct {
 	Capacity int
 	TLS      *tls.Config
@@ -940,9 +858,7 @@ func (listener *Listener[T]) Close() error {
 	return listener.node.Close()
 }
 
-// Listen starts a TLS listener for channels carrying T. Omitting Config enables
-// unauthenticated self-signed TLS and is suitable only when peer identity is not
-// a security requirement.
+// Listen starts an authenticated TLS listener for channels carrying T.
 func Listen[T any](address string, configurations ...Config) (*Listener[T], error) {
 	configuration, err := normalizeConfig(configurations)
 	if err != nil {
@@ -959,7 +875,7 @@ func Listen[T any](address string, configurations ...Config) (*Listener[T], erro
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(serverTLS, insecureClientTLSConfiguration()))
+	node, err := newNode(withTLSConfigs(serverTLS, unusedTLSConfiguration()))
 	if err != nil {
 		return nil, err
 	}
@@ -998,7 +914,7 @@ func Dial[T any](address string, configurations ...Config) (*Channel[T], error) 
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(unusedServerTLSConfiguration(), clientTLS))
+	node, err := newNode(withTLSConfigs(unusedTLSConfiguration(), clientTLS))
 	if err != nil {
 		return nil, err
 	}
@@ -1030,13 +946,13 @@ func normalizeConfig(configurations []Config) (Config, error) {
 	if configuration.Capacity < 0 {
 		return Config{}, errors.New("netchan: channel capacity cannot be negative")
 	}
+	if configuration.TLS == nil {
+		return Config{}, errors.New("netchan: TLS configuration is required")
+	}
 	return configuration, nil
 }
 
 func roleTLSConfiguration(configuration *tls.Config) (*tls.Config, error) {
-	if configuration == nil {
-		return generateTLSConfig()
-	}
 	cloned := configuration.Clone()
 	if cloned.MinVersion == 0 {
 		cloned.MinVersion = tls.VersionTLS13
@@ -1044,11 +960,7 @@ func roleTLSConfiguration(configuration *tls.Config) (*tls.Config, error) {
 	return cloned, nil
 }
 
-func insecureClientTLSConfiguration() *tls.Config {
-	return &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true}
-}
-
-func unusedServerTLSConfiguration() *tls.Config {
+func unusedTLSConfiguration() *tls.Config {
 	return &tls.Config{MinVersion: tls.VersionTLS13}
 }
 
@@ -1083,18 +995,6 @@ type nodeOption func(*nodeConfiguration) error
 type nodeConfiguration struct {
 	serverTLS *tls.Config
 	clientTLS *tls.Config
-}
-
-func withInsecureDevelopmentTLS() nodeOption {
-	return func(configuration *nodeConfiguration) error {
-		developmentTLS, err := generateTLSConfig()
-		if err != nil {
-			return err
-		}
-		configuration.serverTLS = developmentTLS.Clone()
-		configuration.clientTLS = developmentTLS.Clone()
-		return nil
-	}
 }
 
 func withTLSConfigs(server, client *tls.Config) nodeOption {
@@ -2624,7 +2524,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 					continue
 				}
 				internalType := reflect.ChanOf(reflect.BothDir, command.channelType.Elem())
-				allocation := uint64(command.capacity) * uint64(command.channelType.Elem().Size())
+				allocation := uint64(command.capacity) * uint64(command.channelType.Elem().Size()) // #nosec G115 -- command capacities are validated before admission.
 				if allocation > maximumCapabilityBytes || importedCapabilityBytes > maximumCapabilityBytes-allocation {
 					command.reply <- sessionReserveImportCapabilityResult{err: fmt.Errorf("%w: session capability allocation budget reached", ErrPayloadLimit)}
 					continue
@@ -3930,11 +3830,11 @@ func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map
 		writer.uint32(identifier)
 		return
 	}
-	identifier := uint32(len(seen) + 1)
+	identifier := uint32(len(seen) + 1) // #nosec G115 -- a schema is bounded by the maximum wire frame before transmission.
 	seen[valueType] = identifier
 	writer.byte(1)
 	writer.uint32(identifier)
-	writer.byte(byte(valueType.Kind()))
+	writer.byte(byte(valueType.Kind())) // #nosec G115 -- reflect.Kind is a byte-sized protocol enum.
 	writer.data([]byte(valueType.PkgPath()), maximumWireFrameSize, "type package path")
 	writer.data([]byte(valueType.Name()), maximumWireFrameSize, "type name")
 	if usesBinaryCodec(valueType) {
@@ -3946,16 +3846,16 @@ func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map
 	case reflect.Pointer, reflect.Slice:
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Array:
-		writer.uint64(uint64(valueType.Len()))
+		writer.uint64(uint64(valueType.Len())) // #nosec G115 -- reflect array lengths are non-negative.
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Map:
 		writeNetworkTypeSchema(writer, valueType.Key(), seen)
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Chan:
-		writer.byte(byte(valueType.ChanDir()))
+		writer.byte(byte(valueType.ChanDir())) // #nosec G115 -- reflect.ChanDir is a byte-sized protocol enum.
 		writeNetworkTypeSchema(writer, valueType.Elem(), seen)
 	case reflect.Struct:
-		writer.uint32(uint32(valueType.NumField()))
+		writer.uint32(uint32(valueType.NumField())) // #nosec G115 -- a schema is bounded by the maximum wire frame before transmission.
 		for index := 0; index < valueType.NumField(); index++ {
 			field := valueType.Field(index)
 			writer.data([]byte(field.Name), maximumWireFrameSize, "field name")
@@ -4153,19 +4053,19 @@ func (encoder *binaryValueEncoder) encode(value reflect.Value, depth int) {
 			encoder.writer.byte(0)
 		}
 	case reflect.Int8:
-		encoder.writer.byte(byte(int8(value.Int())))
+		encoder.writer.byte(byte(int8(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int16:
-		encoder.writer.uint16(uint16(int16(value.Int())))
+		encoder.writer.uint16(uint16(int16(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int32:
-		encoder.writer.uint32(uint32(int32(value.Int())))
+		encoder.writer.uint32(uint32(int32(value.Int()))) // #nosec G115 -- the reflect kind fixes the width and the wire format preserves its bits.
 	case reflect.Int, reflect.Int64:
-		encoder.writer.uint64(uint64(value.Int()))
+		encoder.writer.uint64(uint64(value.Int())) // #nosec G115 -- two's-complement bits are preserved by the wire representation.
 	case reflect.Uint8:
-		encoder.writer.byte(byte(value.Uint()))
+		encoder.writer.byte(byte(value.Uint())) // #nosec G115 -- the reflect kind guarantees an 8-bit unsigned value.
 	case reflect.Uint16:
-		encoder.writer.uint16(uint16(value.Uint()))
+		encoder.writer.uint16(uint16(value.Uint())) // #nosec G115 -- the reflect kind guarantees a 16-bit unsigned value.
 	case reflect.Uint32:
-		encoder.writer.uint32(uint32(value.Uint()))
+		encoder.writer.uint32(uint32(value.Uint())) // #nosec G115 -- the reflect kind guarantees a 32-bit unsigned value.
 	case reflect.Uint, reflect.Uint64:
 		encoder.writer.uint64(value.Uint())
 	case reflect.Float32:
@@ -4181,7 +4081,7 @@ func (encoder *binaryValueEncoder) encode(value reflect.Value, depth int) {
 		encoder.writer.uint64(math.Float64bits(real(complexValue)))
 		encoder.writer.uint64(math.Float64bits(imag(complexValue)))
 	case reflect.String:
-		encoder.reserve(uint64(value.Len()))
+		encoder.reserve(uint64(value.Len())) // #nosec G115 -- reflect lengths are non-negative.
 		encoder.writer.data([]byte(value.String()), maximumWireFrameSize, "string")
 	case reflect.Pointer:
 		if value.IsNil() {
@@ -4287,7 +4187,7 @@ func (encoder *binaryValueEncoder) encodeChannel(channel reflect.Value) {
 		return
 	}
 	encoder.capabilityCount++
-	encoder.reserve(uint64(channel.Cap()) * uint64(channel.Type().Elem().Size()))
+	encoder.reserve(uint64(channel.Cap()) * uint64(channel.Type().Elem().Size())) // #nosec G115 -- native channel capacity is non-negative.
 	if encoder.writer.err != nil {
 		return
 	}
@@ -4466,13 +4366,13 @@ func (decoder *binaryValueDecoder) decode(destination reflect.Value, depth int) 
 		}
 		destination.SetBool(encoded == 1)
 	case reflect.Int8:
-		destination.SetInt(int64(int8(decoder.reader.byte())))
+		destination.SetInt(int64(int8(decoder.reader.byte()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int16:
-		destination.SetInt(int64(int16(decoder.reader.uint16())))
+		destination.SetInt(int64(int16(decoder.reader.uint16()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int32:
-		destination.SetInt(int64(int32(decoder.reader.uint32())))
+		destination.SetInt(int64(int32(decoder.reader.uint32()))) // #nosec G115 -- decoding restores the signed value from its wire bits.
 	case reflect.Int, reflect.Int64:
-		encoded := int64(decoder.reader.uint64())
+		encoded := int64(decoder.reader.uint64()) // #nosec G115 -- decoding restores the signed value from its wire bits.
 		if destination.OverflowInt(encoded) {
 			decoder.reader.fail(fmt.Errorf("netchan: integer overflows %s", destination.Type()))
 			return
@@ -4624,7 +4524,7 @@ func (decoder *binaryValueDecoder) decodeChannel(destination reflect.Value) {
 		decoder.reader.fail(err)
 		return
 	}
-	decoder.reserve(uint64(capacity) * uint64(destination.Type().Elem().Size()))
+	decoder.reserve(uint64(capacity) * uint64(destination.Type().Elem().Size())) // #nosec G115 -- capacity is validated as non-negative above.
 	if !validChannelDirection(direction) || direction != directionFromReflect(destination.Type().ChanDir()) {
 		decoder.reader.fail(errors.New("netchan: channel capability has an invalid direction"))
 		return

@@ -1,6 +1,6 @@
 # “Quantum” Network Channels in Go — Protocol v2
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan.svg)](https://pkg.go.dev/github.com/matveynator/netchan)
+[![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan/v2.svg)](https://pkg.go.dev/github.com/matveynator/netchan/v2)
 
 ## Введение
 
@@ -27,9 +27,9 @@ v2. При этом NetChan не скрывает физику распреде�
 выполнить один атомарный `select`. Эти границы выражены явными каналами и
 состояниями протокола, а не потерей сообщений или скрытым общим состоянием.
 
-> **Статус проекта:** protocol v2 готов для тестирования реальными
-> приложениями. Сообщения об ошибках, предложения и дополнительные проверки
-> приветствуются в [GitHub Issues](https://github.com/matveynator/netchan/issues).
+> **Статус проекта:** v2 — текущая стабильная major-версия. Новые выпуски
+> следуют SemVer, проходят обязательные security checks и попадают в `main`
+> только через pull request.
 
 ## Почему «Quantum» Network Channels
 
@@ -108,11 +108,11 @@ connection.Done       // <-chan struct{}
 ## Установка
 
 ```bash
-go get github.com/matveynator/netchan@latest
+go get github.com/matveynator/netchan/v2@latest
 ```
 
 ```go
-import "github.com/matveynator/netchan"
+import "github.com/matveynator/netchan/v2"
 ```
 
 ## Самый простой сервер
@@ -123,9 +123,10 @@ import "github.com/matveynator/netchan"
 package main
 
 import (
+	"crypto/tls"
 	"log"
 
-	"github.com/matveynator/netchan"
+	"github.com/matveynator/netchan/v2"
 )
 
 func serveConnection(connection *netchan.Channel[string]) {
@@ -137,7 +138,19 @@ func serveConnection(connection *netchan.Channel[string]) {
 }
 
 func main() {
-	listener, err := netchan.Listen[string]("127.0.0.1:9876")
+	certificate, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		log.Fatal(err)
+	}
+	serverTLS := &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	listener, err := netchan.Listen[string](
+		"127.0.0.1:9876",
+		netchan.Config{TLS: serverTLS},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -155,14 +168,34 @@ func main() {
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
+	"os"
 
-	"github.com/matveynator/netchan"
+	"github.com/matveynator/netchan/v2"
 )
 
 func main() {
-	connection, err := netchan.Dial[string]("127.0.0.1:9876")
+	certificatePEM, err := os.ReadFile("ca.crt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	rootCertificates := x509.NewCertPool()
+	if !rootCertificates.AppendCertsFromPEM(certificatePEM) {
+		log.Fatal("server CA certificate is invalid")
+	}
+	clientTLS := &tls.Config{
+		RootCAs:    rootCertificates,
+		ServerName: "netchan.example",
+		MinVersion: tls.VersionTLS13,
+	}
+
+	connection, err := netchan.Dial[string](
+		"127.0.0.1:9876",
+		netchan.Config{TLS: clientTLS},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -490,9 +523,9 @@ NetChan делает эти границы явными через `Deliver`, `D
 
 ## TLS
 
-Вызовы без `Config` создают самоподписанный TLS-сертификат. Трафик шифруется, но
-личность peer не проверяется. Такой режим подходит для localhost и тестирования,
-но не защищает production-соединение от подмены.
+Каждый `Listen` и `Dial` требует `Config.TLS`. Вызов без TLS-конфигурации
+завершается ошибкой, чтобы приложение не могло случайно включить шифрование
+без аутентификации peer.
 
 Production-конфигурация использует обычный `*tls.Config`:
 
@@ -507,7 +540,7 @@ func dialWithTLS(address string, clientTLS *tls.Config) (*netchan.Channel[string
 ```
 
 Для этого примера нужны импорты `crypto/tls` и
-`github.com/matveynator/netchan`. Если `MinVersion` не задан, NetChan выбирает
+`github.com/matveynator/netchan/v2`. Если `MinVersion` не задан, NetChan выбирает
 TLS 1.3.
 
 ## Бинарное кодирование
@@ -551,9 +584,19 @@ Generics используются только для типизированно
 
 ## Совместимость
 
-Wire protocol v2 и generic API намеренно несовместимы с опубликованным protocol
-v1. Обе стороны одного соединения должны использовать protocol v2 и совпадающие
-схемы сообщений.
+Go module v2 и generic API намеренно несовместимы с v1. Обе стороны
+одного соединения должны использовать protocol v2 и совпадающие схемы
+сообщений.
+
+| Версия | Import path | Статус |
+|---|---|---|
+| v1 | `github.com/matveynator/netchan` | Архивная, без новых исправлений |
+| v2 | `github.com/matveynator/netchan/v2` | Текущая поддерживаемая версия |
+
+Версии публикуются неизменяемыми Git-тегами в формате SemVer. Patch-версия
+исправляет ошибки без изменения API, minor-версия совместимо добавляет API,
+а несовместимое изменение требует новой major-версии и import path. Последний
+стабильный выпуск всегда доступен по [постоянной ссылке](https://github.com/matveynator/netchan/releases/latest).
 
 Protocol v2 является второй опубликованной версией. Промежуточные реализации,
 которые во время разработки получали номера 2, 3 и 4, были попытками одного
