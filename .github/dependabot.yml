@@ -9,3 +9,7 @@ updates:
     directory: "/" # Location of the Go module files
     schedule:
       interval: "weekly" # Dependabot will check for updates weekly
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
