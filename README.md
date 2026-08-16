@@ -2,96 +2,97 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan/v2.svg)](https://pkg.go.dev/github.com/matveynator/netchan/v2)
 
-## Введение
+## Introduction
 
-Каналы Go просты не потому, что только переносят значения. Они соединяют
-независимые процессы, синхронизируют их и передают ответственность за данные.
-После успешной отправки значение логически исчезает у отправителя и появляется
-у получателя. Именно это свойство здесь называется «квантовым».
+Go channels are simple not merely because they carry values. They connect
+independent processes, synchronize them, and transfer responsibility for data.
+After a successful send, a value logically disappears from the sender and
+appears at the receiver. This property is what “quantum” refers to here.
 
-NetChan переносит ту же модель между процессами и компьютерами:
+NetChan extends the same model across processes and computers:
 
 ```go
 connection.Send <- message
 message = <-connection.Receive
 ```
 
-В протоколе v2 сетевой канал умеет передавать значения, reply channels,
-долгоживущие session channels и каналы отмены. Он сохраняет порядок сообщений,
-создаёт обратное давление, восстанавливается после временного обрыва и отличает
-приём сетевым узлом от фактического чтения удалённой goroutine.
+In protocol v2, a network channel can carry values, reply channels, long-lived
+session channels, and cancellation channels. It preserves message order,
+provides backpressure, recovers from temporary disconnections, and distinguishes
+receipt by the remote node from an actual read by the remote goroutine.
 
-Все ограничения, перечисленные в README первой версии протокола, устранены в
-v2. При этом NetChan не скрывает физику распределённой системы: сеть требует
-кодирования и временной копии, а два независимых планировщика Go не могут
-выполнить один атомарный `select`. Эти границы выражены явными каналами и
-состояниями протокола, а не потерей сообщений или скрытым общим состоянием.
+All limitations listed in the README for the first protocol version have been
+addressed in v2. NetChan still does not hide the physics of a distributed system:
+the network requires encoding and a temporary copy, while two independent Go
+schedulers cannot perform a single atomic `select`. These boundaries are
+represented by explicit channels and protocol states, rather than message loss
+or hidden shared state.
 
-> **Статус проекта:** v2 — текущая стабильная major-версия. Новые выпуски
-> следуют SemVer, проходят обязательные security checks и попадают в `main`
-> только через pull request.
+> **Project status:** v2 is the current stable major version. New releases follow
+> SemVer, pass mandatory security checks, and enter `main` only through pull
+> requests.
 
-## Почему «Quantum» Network Channels
+## Why “Quantum” Network Channels
 
-Внутри одного процесса runtime Go выступает hypervisor каналов: он знает, какая
-goroutine отправляет значение, какая готова его прочитать и в какой момент
-передаётся право продолжить работу.
+Within a single process, the Go runtime acts as a channel hypervisor: it knows
+which goroutine is sending a value, which one is ready to read it, and when the
+right to continue is transferred.
 
-Между компьютерами общего runtime нет. В NetChan v2 роль network hypervisor
-выполняют логическая сессия и протокол подтверждений:
+There is no shared runtime between computers. In NetChan v2, a logical session
+and the acknowledgement protocol act as the network hypervisor:
 
-1. отправитель передаёт значение локальному actor NetChan;
-2. значение кодируется и регистрируется на удалённой стороне;
-3. удалённое приложение читает его из обычного Go-канала;
-4. подтверждение чтения возвращается отправителю;
-5. временная закодированная копия освобождается.
+1. the sender transfers a value to the local NetChan actor;
+2. the value is encoded and registered on the remote side;
+3. the remote application reads it from an ordinary Go channel;
+4. the read acknowledgement returns to the sender;
+5. the temporary encoded copy is released.
 
-На wire этот переход выражен последовательностью:
+On the wire, this transition is represented by the sequence:
 
 ```text
 DATA → PREPARED → DELIVERED → RELEASE
 ```
 
-Поэтому «исчезновение» означает переход логического владения. Отправитель после
-передачи больше не изменяет отправленные maps, slices и данные по указателям;
-получатель становится новым владельцем после чтения. Физическая копия нужна
-сети для восстановления после обрыва и живёт только до подтверждения.
+Here, “disappearance” means a transfer of logical ownership. After sending, the
+sender no longer modifies the transferred maps, slices, or pointer-referenced
+data; the receiver becomes the new owner after reading. The network needs a
+physical copy for disconnection recovery, and it exists only until acknowledgement.
 
-## Что изменилось с первой версии
+## What changed since the first version
 
-| Ограничение protocol v1 | Реализация в protocol v2 |
+| Protocol v1 limitation | Protocol v2 implementation |
 |---|---|
-| Отправка не синхронизировалась с удалённым чтением | `Deliver` завершается только после чтения удалённым приложением |
-| При сетевой ошибке сообщение могло потеряться | Журнал неподтверждённых сообщений, ACK, replay и дедупликация |
-| Передавались в основном значения | В сообщениях передаются направленные reply, session и cancellation channels |
-| Не было сетевой отмены задачи | Закрытие переданного `Done` распространяется на удалённую сторону |
-| Буфер был частью неявного поведения | `Config.Capacity` и ограниченное окно протокола создают явный backpressure |
-| Использовался Gob | Собственный ограниченный codec на основе `encoding/binary` |
-| Физический обрыв завершал обмен | Логическая сессия сохраняется и переподключает транспорт |
-| Не было строгой модели владения | `DATA → PREPARED → DELIVERED → RELEASE` удерживает данные до подтверждения |
-| Закрытый вложенный канал мог оставить состояние | Terminal barrier освобождает capability после завершения всех родительских сообщений |
+| Sending was not synchronized with the remote read | `Deliver` completes only after the remote application reads the value |
+| A network error could lose a message | Unacknowledged-message journal, ACKs, replay, and deduplication |
+| Primarily values could be transferred | Messages can carry directional reply, session, and cancellation channels |
+| Tasks could not be cancelled over the network | Closing a transferred `Done` propagates to the remote side |
+| Buffering was implicit behavior | `Config.Capacity` and a bounded protocol window provide explicit backpressure |
+| Gob was used | A custom bounded codec based on `encoding/binary` |
+| A physical disconnection ended the exchange | The logical session persists and reconnects its transport |
+| There was no strict ownership model | `DATA → PREPARED → DELIVERED → RELEASE` retains data until acknowledgement |
+| A closed nested channel could leave state behind | A terminal barrier releases a capability after all parent messages complete |
 
-## Обзор API
+## API overview
 
-У библиотеки две точки входа:
+The library has two entry points:
 
 ```go
 listener, err := netchan.Listen[Message](address)
 connection, err := netchan.Dial[Message](address)
 ```
 
-`Dial` возвращает одно логическое соединение. `Listen` возвращает listener, а
-каждый подключившийся клиент появляется в его обычном Go-канале `Channels`:
+`Dial` returns one logical connection. `Listen` returns a listener, and every
+connected client appears on its ordinary Go channel, `Channels`:
 
 ```go
 connection := <-listener.Channels
 ```
 
-У listener также есть `Errors`, `Done` и фактически занятый `Address`. Последний
-особенно удобен при `Listen[Message]("127.0.0.1:0")`, когда порт выбирает
-операционная система.
+The listener also exposes `Errors`, `Done`, and the actual bound `Address`. The
+latter is especially useful with `Listen[Message]("127.0.0.1:0")`, when the
+operating system selects the port.
 
-Обе стороны получают один и тот же тип `*netchan.Channel[T]`:
+Both sides receive the same `*netchan.Channel[T]` type:
 
 ```go
 connection.Send       // chan<- T
@@ -100,12 +101,12 @@ connection.Errors     // <-chan error
 connection.Done       // <-chan struct{}
 ```
 
-`Send` и `Receive` разделены намеренно. Если вернуть один двусторонний `chan T`,
-локальный отправитель сможет встретиться с локальным получателем напрямую и
-значение вообще не попадёт в сеть. Два направленных канала сохраняют обычный
-синтаксис Go и однозначную сетевую границу.
+`Send` and `Receive` are intentionally separate. Returning a single bidirectional
+`chan T` would let a local sender rendezvous directly with a local receiver, so
+the value might never reach the network. Two directional channels preserve
+ordinary Go syntax and an unambiguous network boundary.
 
-## Установка
+## Installation
 
 ```bash
 go get github.com/matveynator/netchan/v2@latest
@@ -115,9 +116,9 @@ go get github.com/matveynator/netchan/v2@latest
 import "github.com/matveynator/netchan/v2"
 ```
 
-## Самый простой сервер
+## Minimal server
 
-Сервер принимает клиентов и запускает для каждого независимую goroutine.
+The server accepts clients and starts an independent goroutine for each one.
 
 ```go
 package main
@@ -133,7 +134,7 @@ func serveConnection(connection *netchan.Channel[string]) {
 	defer connection.Close()
 
 	for message := range connection.Receive {
-		connection.Send <- "Сервер получил: " + message
+		connection.Send <- "Server received: " + message
 	}
 }
 
@@ -162,7 +163,7 @@ func main() {
 }
 ```
 
-## Самый простой клиент
+## Minimal client
 
 ```go
 package main
@@ -200,7 +201,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	connection.Send <- "Привет"
+	connection.Send <- "Hello"
 	reply := <-connection.Receive
 	fmt.Println(reply)
 
@@ -209,13 +210,13 @@ func main() {
 }
 ```
 
-Это минимальная форма. В долгоживущем приложении отправку и получение следует
-объединять с `Done` через обычный `select`.
+This is the minimal form. In a long-lived application, sending and receiving
+should be combined with `Done` through an ordinary `select`.
 
-## `select`, `close` и `range`
+## `select`, `close`, and `range`
 
-Все публичные направления NetChan являются настоящими каналами Go. Для них не
-нужны специальные методы чтения и записи.
+All public NetChan directions are real Go channels. They require no special read
+or write methods.
 
 ```go
 func exchange(connection *netchan.Channel[string], outgoing string) (string, bool) {
@@ -234,7 +235,7 @@ func exchange(connection *netchan.Channel[string], outgoing string) (string, boo
 }
 ```
 
-Для мягкого завершения владелец закрывает отправляющую сторону и ждёт `Done`:
+For a graceful shutdown, the owner closes the sending side and waits for `Done`:
 
 ```go
 func closeConnection(connection *netchan.Channel[string]) {
@@ -243,7 +244,7 @@ func closeConnection(connection *netchan.Channel[string]) {
 }
 ```
 
-Эквивалентная сокращённая форма:
+The equivalent shorthand is:
 
 ```go
 func closeConnectionWithMethod(connection *netchan.Channel[string]) error {
@@ -251,48 +252,46 @@ func closeConnectionWithMethod(connection *netchan.Channel[string]) error {
 }
 ```
 
-После `Close` действуют обычные правила Go: приложение не должно отправлять в
-закрытый канал. Сначала остановите goroutine-отправителей, затем закрывайте
-принадлежащее вам направление.
+After `Close`, the ordinary Go rules apply: the application must not send on a
+closed channel. Stop sender goroutines first, then close the direction you own.
 
-## Какие свойства каналов Go реализованы в v2
+## Go channel properties implemented in v2
 
-### Статическая типизация
+### Static typing
 
-`Channel[T]`, `Listen[T]` и `Dial[T]` сохраняют конкретный тип сообщения. Ошибка
-типа обнаруживается компилятором, а несовпадающая схема между peers отклоняется
-при открытии сетевого канала.
+`Channel[T]`, `Listen[T]`, and `Dial[T]` preserve the concrete message type. The
+compiler detects type errors, while a schema mismatch between peers is rejected
+when the network channel opens.
 
-### Направление передачи
+### Transfer direction
 
-Корневые `Send` и `Receive`, а также вложенные `chan<- T` и `<-chan T` явно
-описывают, кто имеет право отправлять и получать. Двусторонний вложенный `chan T`
-не передаётся, потому что он не определяет, какое право должно перейти другой
-стороне.
+The root `Send` and `Receive` channels, as well as nested `chan<- T` and
+`<-chan T` channels, explicitly define who may send and receive. A nested
+bidirectional `chan T` is not transferred because it does not define which right
+should pass to the other side.
 
-### Блокировка и обратное давление
+### Blocking and backpressure
 
-Обычная отправка блокируется, пока значение не примет локальный actor NetChan.
-Если локальный буфер, сетевое окно или ограниченные очереди заполнены, actor
-перестаёт принимать значения и оператор `<-` естественно создаёт backpressure.
+An ordinary send blocks until the local NetChan actor accepts the value. If the
+local buffer, network window, or bounded queues are full, the actor stops
+accepting values and the `<-` operator naturally applies backpressure.
 
-### Порядок сообщений
+### Message ordering
 
-Обычные отправки и `Deliver` входят в одну последовательность. Значения,
-принятые от одной goroutine по порядку, выдаются удалённому приложению в том же
-порядке. Порядок конкурентных отправителей определяется обычным планированием
-каналов Go.
+Ordinary sends and `Deliver` share one sequence. Values accepted in order from
+one goroutine are presented to the remote application in the same order. The
+ordering of concurrent senders follows ordinary Go channel scheduling.
 
-### Закрытие
+### Closing
 
-`close(connection.Send)` сообщает, что локальных значений больше не будет.
-После завершения логического канала закрываются `Receive`, `Errors` и `Done`,
-поэтому доступны `range`, получение с `open` и ожидание в `select`.
+`close(connection.Send)` declares that no more local values will be sent. Once
+the logical channel finishes, `Receive`, `Errors`, and `Done` are closed, enabling
+`range`, receives with `open`, and waiting in `select`.
 
-### Буфер
+### Buffering
 
-По умолчанию `Send` небуферизирован. Локальную ёмкость можно задать отдельно на
-каждой стороне:
+By default, `Send` is unbuffered. Local capacity can be configured independently
+on each side:
 
 ```go
 func dialBuffered(address string) (*netchan.Channel[string], error) {
@@ -300,36 +299,36 @@ func dialBuffered(address string) (*netchan.Channel[string], error) {
 }
 ```
 
-`Capacity` относится только к локальному `Send`. `Receive` всегда остаётся
-небуферизированным, чтобы протокол мог точно определить момент чтения для
-`Deliver`.
+`Capacity` applies only to the local `Send`. `Receive` always remains unbuffered
+so the protocol can determine the exact read point for `Deliver`.
 
 ### `select/case`
 
-Одна goroutine может выбирать между локальными направлениями нескольких
-сетевых каналов, таймером и каналом завершения тем же оператором `select`, что и
-для любых каналов Go. Выбранный `case connection.Send <- message` означает
-приём локальным NetChan, а строгий сетевой rendezvous выражается через
+A goroutine can choose among the local directions of several network channels,
+a timer, and a completion channel using the same `select` statement as with any
+Go channels. A selected `case connection.Send <- message` means acceptance by
+the local NetChan process; strict network rendezvous is expressed through
 `Deliver`.
 
-### Канал внутри канала
+### A channel inside a channel
 
-Направленный канал в сообщении передаёт не накопленные значения, а право
-продолжить общение. Это основной механизм reply channels, session channels и
-удалённой отмены без таблицы клиентов и общего mutable state.
+A directional channel in a message transfers the right to continue communicating,
+not accumulated values. This is the primary mechanism for reply channels, session
+channels, and remote cancellation without a client table or shared mutable state.
 
-## Обычная отправка и строгий rendezvous
+## Ordinary sending and strict rendezvous
 
-Оператор `<-` невозможно переопределить в Go-библиотеке:
+A Go library cannot override the `<-` operator:
 
 ```go
 connection.Send <- message
 ```
 
-Эта операция завершается, когда значение принял локальный процесс NetChan. С
-этого момента отправитель передал владение и не должен менять значение.
+This operation completes when the local NetChan process accepts the value. At
+that point, the sender has transferred ownership and must not modify the value.
 
-Если нужно дождаться именно чтения удалённой goroutine, используется `Deliver`:
+Use `Deliver` when the sender must wait for the remote goroutine to actually read
+the value:
 
 ```go
 func sendAndWait(connection *netchan.Channel[string], message string) error {
@@ -337,14 +336,14 @@ func sendAndWait(connection *netchan.Channel[string], message string) error {
 }
 ```
 
-`Deliver` возвращает `nil` только после чтения из удалённого `Receive`. При
-окончательном закрытии он возвращает `netchan.ErrChannelClosed`. Ошибка
-кодирования конкретного значения также возвращается напрямую.
+`Deliver` returns `nil` only after the remote `Receive` is read. If the channel
+closes permanently, it returns `netchan.ErrChannelClosed`. An encoding error for
+the specific value is also returned directly.
 
-## Канал внутри канала: задача, ответ и отмена
+## A channel inside a channel: task, reply, and cancellation
 
-Каждая задача может создать собственный reply channel. Обработчику не нужны
-адрес клиента, идентификатор запроса или общая таблица ожидающих результатов.
+Each task can create its own reply channel. The handler needs no client address,
+request identifier, or shared table of pending results.
 
 ```go
 type Result struct {
@@ -358,8 +357,8 @@ type Task struct {
 }
 ```
 
-Клиент оставляет локальные каналы у себя и передаёт обработчику только
-необходимые права:
+The client keeps its local channels and transfers only the required rights to the
+handler:
 
 ```go
 func requestTask(connection *netchan.Channel[Task], text string, cancel <-chan struct{}) (Result, bool) {
@@ -385,8 +384,7 @@ func requestTask(connection *netchan.Channel[Task], text string, cancel <-chan s
 }
 ```
 
-Обработчик отвечает непосредственно в канал задачи и одновременно наблюдает за
-её жизненным циклом:
+The handler replies directly to the task channel while observing its lifecycle:
 
 ```go
 func handleTask(connection *netchan.Channel[Task], task Task) {
@@ -398,7 +396,7 @@ func handleTask(connection *netchan.Channel[Task], task Task) {
 	default:
 	}
 
-	result := Result{Text: "Готово: " + task.Text}
+	result := Result{Text: "Done: " + task.Text}
 	select {
 	case task.Reply <- result:
 	case <-task.Done:
@@ -415,23 +413,22 @@ func serveTasks(connection *netchan.Channel[Task]) {
 }
 ```
 
-Если внешний `cancel` закрывается или соединение завершается, функция выходит и
-через `defer` закрывает локальный `done`. Закрытие проходит через сеть, и
-удалённый обработчик видит закрытый `task.Done`. Для долгой работы обработчик
-проверяет его между шагами либо строит асинхронный streaming pipeline.
+If the external `cancel` channel closes or the connection ends, the function
+returns and closes the local `done` through `defer`. The closure crosses the
+network, and the remote handler observes a closed `task.Done`. For long-running
+work, the handler checks it between stages or builds an asynchronous streaming
+pipeline.
 
-Вложенный канал активируется только после того, как приложение действительно
-прочитало родительскую задачу. Непринятая задача не запускает скрытую работу.
-Один живой канал можно передать в нескольких сообщениях: удалённая сторона
-получит один и тот же proxy. После закрытия terminal barrier удерживает его до
-разрешения всех ранее принятых родительских сообщений, а затем освобождает
-capability на обеих сторонах.
+A nested channel becomes active only after the application actually reads the
+parent task. An unaccepted task does not start hidden work. One live channel may
+be transferred in several messages: the remote side receives the same proxy.
+After closure, a terminal barrier retains it until all previously accepted parent
+messages are resolved, then releases the capability on both sides.
 
-## Долгоживущий session channel
+## Long-lived session channel
 
-Reply channel обычно живёт до одного ответа. Session channel остаётся внутри
-отдельной goroutine и передаёт поток сообщений, пока одна из сторон его не
-закроет.
+A reply channel usually lives until one response. A session channel remains in a
+dedicated goroutine and carries a stream of messages until either side closes it.
 
 ```go
 type Subscription struct {
@@ -460,43 +457,43 @@ func publishEvents(subscription Subscription, events <-chan string) {
 }
 ```
 
-Такой процесс не хранит subscriber state: всё право контакта находится в
-переданных каналах.
+Such a process stores no subscriber state: the transferred channels hold the
+entire right of contact.
 
-## Переподключение и гарантии доставки
+## Reconnection and delivery guarantees
 
-После успешного `Dial` приложение продолжает пользоваться тем же `Channel`,
-даже если физический TCP/TLS transport временно заменяется. NetChan v2:
+After a successful `Dial`, the application continues using the same `Channel`
+even when the physical TCP/TLS transport is temporarily replaced. NetChan v2:
 
-- повторяет неподтверждённые frames после переподключения;
-- не выдаёт одно значение приложению повторно;
-- различает транспортный ACK и фактическое чтение приложением;
-- сохраняет порядок обычных отправок и `Deliver`;
-- удерживает значение до `RELEASE`;
-- восстанавливает ссылки на вложенные каналы;
-- закрывает сессию при несовместимом или потерянном resume-state.
+- replays unacknowledged frames after reconnection;
+- never presents the same value to the application twice;
+- distinguishes a transport ACK from an actual application read;
+- preserves the order of ordinary sends and `Deliver` calls;
+- retains a value until `RELEASE`;
+- restores references to nested channels;
+- closes the session if resume state is incompatible or lost.
 
-Попытки восстановления используют возрастающую задержку до пяти секунд.
-Отключённая логическая сессия хранится пять минут. Если peer уже потерял её
-состояние, канал окончательно закрывается, а `Errors` может сообщить
-`netchan.ErrSessionExpired`. Отказ принять новую сессию возвращается из `Dial`
-как `netchan.ErrSessionRejected`.
+Recovery attempts use increasing delays up to five seconds. A disconnected
+logical session is retained for five minutes. If the peer has already lost its
+state, the channel closes permanently and `Errors` may report
+`netchan.ErrSessionExpired`. Refusal to accept a new session is returned from
+`Dial` as `netchan.ErrSessionRejected`.
 
-Гарантия отсутствия повторной выдачи действует в пределах живой логической
-сессии. После полного перезапуска обоих процессов exactly-once требует
-прикладной транзакции или журнала в постоянном хранилище.
+The no-duplicate-delivery guarantee applies within a live logical session. After
+a complete restart of both processes, exactly-once delivery requires an
+application transaction or a journal in persistent storage.
 
-## Ошибки и аварийное завершение
+## Errors and aborting
 
-`connection.Errors` и `listener.Errors` — диагностические best effort каналы.
-Надёжным terminal-сигналом является закрытие соответствующего `Done`.
+`connection.Errors` and `listener.Errors` are best-effort diagnostic channels.
+Closing the corresponding `Done` is the reliable terminal signal.
 
-Если обычной отправкой принято значение, которое невозможно закодировать,
-NetChan сообщает ошибку и завершает канал: значение не отбрасывается молча.
-`Deliver` возвращает такую ошибку напрямую.
+If an ordinary send accepts a value that cannot be encoded, NetChan reports the
+error and terminates the channel: the value is not silently discarded. `Deliver`
+returns such an error directly.
 
-Мягкий `Close` дожидается уже принятых значений. Если доставка больше не нужна,
-используется явная аварийная остановка:
+A graceful `Close` waits for values that have already been accepted. If delivery
+is no longer required, use an explicit abort:
 
 ```go
 func abortConnection(connection *netchan.Channel[string]) error {
@@ -504,30 +501,30 @@ func abortConnection(connection *netchan.Channel[string]) error {
 }
 ```
 
-`Abort` отменяет накопленные передачи и не обещает доставить их peer.
+`Abort` cancels queued transfers and does not promise to deliver them to the peer.
 
-## Физические границы сети
+## Physical network boundaries
 
-У protocol v2 больше нет функциональных ограничений, перечисленных для v1.
-Остаются свойства, которые невозможно устранить на уровне Go-библиотеки:
+Protocol v2 no longer has the functional limitations listed for v1. The
+properties that cannot be eliminated at the Go library level remain:
 
-- два компьютера не имеют общего планировщика goroutines, поэтому атомарный
-  межмашинный `select` невозможен;
-- wire transport требует кодирования и временной физической копии;
-- процесс, потерявший оперативную память, не может восстановить exactly-once
-  без прикладного постоянного хранилища;
-- конечная память требует ограниченных очередей и проверки входных размеров.
+- two computers do not share a goroutine scheduler, so an atomic cross-machine
+  `select` is impossible;
+- wire transport requires encoding and a temporary physical copy;
+- a process that loses its memory cannot recover exactly-once delivery without
+  application-level persistent storage;
+- finite memory requires bounded queues and input-size validation.
 
-NetChan делает эти границы явными через `Deliver`, `Done`, `Errors`, закрытие
-каналов, backpressure и состояние логической сессии.
+NetChan makes these boundaries explicit through `Deliver`, `Done`, `Errors`,
+channel closure, backpressure, and logical session state.
 
 ## TLS
 
-Каждый `Listen` и `Dial` требует `Config.TLS`. Вызов без TLS-конфигурации
-завершается ошибкой, чтобы приложение не могло случайно включить шифрование
-без аутентификации peer.
+Every `Listen` and `Dial` requires `Config.TLS`. A call without TLS configuration
+returns an error, preventing an application from accidentally enabling encryption
+without peer authentication.
 
-Production-конфигурация использует обычный `*tls.Config`:
+A production configuration uses an ordinary `*tls.Config`:
 
 ```go
 func listenWithTLS(address string, serverTLS *tls.Config) (*netchan.Listener[string], error) {
@@ -539,78 +536,76 @@ func dialWithTLS(address string, clientTLS *tls.Config) (*netchan.Channel[string
 }
 ```
 
-Для этого примера нужны импорты `crypto/tls` и
-`github.com/matveynator/netchan/v2`. Если `MinVersion` не задан, NetChan выбирает
-TLS 1.3.
+This example requires the `crypto/tls` and
+`github.com/matveynator/netchan/v2` imports. If `MinVersion` is unset, NetChan
+selects TLS 1.3.
 
-## Бинарное кодирование
+## Binary encoding
 
-Protocol v2 использует собственный ограниченный формат на основе
-`encoding/binary` и не использует Gob.
+Protocol v2 uses a custom bounded format based on `encoding/binary`; it does not
+use Gob.
 
-Поддерживаются:
+Supported types include:
 
-- boolean, числа и строки;
-- структуры с экспортируемыми полями;
-- массивы, slices, maps и указатели;
-- направленные `chan<- T` и `<-chan T` внутри сообщений;
-- типы с `MarshalBinary` и `UnmarshalBinary`.
+- booleans, numbers, and strings;
+- structs with exported fields;
+- arrays, slices, maps, and pointers;
+- directional `chan<- T` and `<-chan T` channels inside messages;
+- types implementing `MarshalBinary` and `UnmarshalBinary`.
 
-Обе стороны корневого канала используют одинаковый конкретный `T`. Направление
-вложенного канала входит в схему. Интерфейсы, функции, `unsafe.Pointer`,
-циклические указатели и двусторонние вложенные `chan T` не передаются.
+Both sides of a root channel use the same concrete `T`. A nested channel's
+direction is part of the schema. Interfaces, functions, `unsafe.Pointer`, cyclic
+pointers, and nested bidirectional `chan T` channels are not transferred.
 
-Generics используются только для типизированной публичной границы. `reflect`
-скрыт внутри codec и нужен, чтобы построить схему произвольного `T` и найти в
-структуре направленные каналы. Тип может полностью управлять своим форматом
-через `MarshalBinary` и `UnmarshalBinary`.
+Generics are used only for the typed public boundary. `reflect` is confined to
+the codec and is needed to build a schema for an arbitrary `T` and find
+directional channels in a struct. A type can control its format completely
+through `MarshalBinary` and `UnmarshalBinary`.
 
-## Защитные пределы
+## Protective limits
 
-Лимиты v2 не являются недостающими возможностями. Они не позволяют
-недоверенному peer или медленному получателю бесконечно занимать память:
+The v2 limits are not missing capabilities. They prevent an untrusted peer or a
+slow receiver from consuming memory without bound:
 
-- wire frame — не более 16 МиБ;
-- до 16 вложенных каналов в одном значении;
-- до 256 одновременно живых capability в логической сессии;
-- до 1024 неподтверждённых frames;
-- отдельные бюджеты для закодированных, подготовленных и декодированных
-  значений;
-- ограниченная глубина и размер коллекций при декодировании.
+- wire frames are limited to 16 MiB;
+- each value may contain up to 16 nested channels;
+- a logical session may have up to 256 simultaneously live capabilities;
+- up to 1,024 frames may remain unacknowledged;
+- encoded, prepared, and decoded values have separate budgets;
+- collection depth and size are bounded during decoding.
 
-После terminal barrier закрытая capability освобождается, поэтому число
-последовательно выполненных задач не ограничено числом одновременно живых
-каналов.
+After the terminal barrier, a closed capability is released, so the number of
+sequentially completed tasks is not limited by the number of simultaneously live
+channels.
 
-## Совместимость
+## Compatibility
 
-Go module v2 и generic API намеренно несовместимы с v1. Обе стороны
-одного соединения должны использовать protocol v2 и совпадающие схемы
-сообщений.
+The v2 Go module and generic API are intentionally incompatible with v1. Both
+sides of a connection must use protocol v2 and matching message schemas.
 
-| Версия | Import path | Статус |
+| Version | Import path | Status |
 |---|---|---|
-| v1 | `github.com/matveynator/netchan` | Архивная, без новых исправлений |
-| v2 | `github.com/matveynator/netchan/v2` | Текущая поддерживаемая версия |
+| v1 | `github.com/matveynator/netchan` | Archived; no new fixes |
+| v2 | `github.com/matveynator/netchan/v2` | Current supported version |
 
-Версии публикуются неизменяемыми Git-тегами в формате SemVer. Patch-версия
-исправляет ошибки без изменения API, minor-версия совместимо добавляет API,
-а несовместимое изменение требует новой major-версии и import path. Последний
-стабильный выпуск всегда доступен по [постоянной ссылке](https://github.com/matveynator/netchan/releases/latest).
+Versions are published as immutable Git tags following SemVer. A patch release
+fixes bugs without changing the API, a minor release adds API compatibly, and an
+incompatible change requires a new major version and import path. The latest
+stable release is always available through the [permanent link](https://github.com/matveynator/netchan/releases/latest).
 
-Protocol v2 является второй опубликованной версией. Промежуточные реализации,
-которые во время разработки получали номера 2, 3 и 4, были попытками одного
-перехода от protocol v1 и не считаются отдельными выпущенными протоколами.
+Protocol v2 is the second published version. Intermediate implementations
+numbered 2, 3, and 4 during development were attempts at the same transition
+from protocol v1 and are not considered separately released protocols.
 
-## TODO и будущие транспорты
+## TODO and future transports
 
-Текущая реализация использует TCP/TLS. Идеи поддержки QUIC поверх UDP,
-Bluetooth RFCOMM, BLE, автоматического nearby discovery и duplex QR-обмена
-через camera/display отложены и пока не являются частью публичного API.
+The current implementation uses TCP/TLS. Support for QUIC over UDP, Bluetooth
+RFCOMM, BLE, automatic nearby discovery, and duplex QR exchange through a camera
+and display has been deferred and is not yet part of the public API.
 
-Согласованные архитектурные решения и этапы сохранены в [TODO.md](TODO.md).
+Agreed architectural decisions and milestones are recorded in [TODO.md](TODO.md).
 
-## Проверка проекта
+## Project checks
 
 ```bash
 go test ./...
@@ -620,20 +615,20 @@ go vet ./...
 NETCHAN_NETWORK_TEST=1 go test -run 'TestPublic(ListenAndDial|ConfigAndListenerLifecycle|ClientsRemainIndependent|ListenerCloseTerminatesActiveChannel|ListenerCloseInterruptsIncompleteHandshake)$' -v .
 ```
 
-## Сообщество и поддержка
+## Community and support
 
-Вопросы, предложения и сообщения об ошибках можно публиковать в
-[GitHub Issues](https://github.com/matveynator/netchan/issues). Особенно полезны
-реальные сценарии с временными обрывами, длинными streaming sessions и каналами
-внутри сообщений.
+Questions, suggestions, and bug reports are welcome in
+[GitHub Issues](https://github.com/matveynator/netchan/issues). Real-world
+scenarios involving temporary disconnections, long streaming sessions, and
+channels inside messages are especially useful.
 
-## Похожие проекты
+## Related projects
 
-- [Netchan old version](https://github.com/matveynator/netchan-old) — развитие первоначальной идеи Rob Pike;
-- [Docker Libchan](https://github.com/docker/libchan) — сетевой message-passing interface;
-- [GraftJS/jschan](https://github.com/graftjs/jschan) — похожая модель каналов для JavaScript;
-- [Mat Ryer/Vice](https://github.com/matryer/vice) — каналы Go в распределённой среде.
+- [Netchan old version](https://github.com/matveynator/netchan-old) — an extension of Rob Pike's original idea;
+- [Docker Libchan](https://github.com/docker/libchan) — a network message-passing interface;
+- [GraftJS/jschan](https://github.com/graftjs/jschan) — a similar channel model for JavaScript;
+- [Mat Ryer/Vice](https://github.com/matryer/vice) — Go channels in a distributed environment.
 
-## Лицензия
+## License
 
-NetChan распространяется по [BSD 3-Clause License](LICENSE).
+NetChan is distributed under the [BSD 3-Clause License](LICENSE).
