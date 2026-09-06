@@ -4,7 +4,7 @@
 
 ## Why NetChan
 
-A common way to speed up a large computation is to split it into smaller independent sequential tasks.
+A common way to make a large computation finish sooner is to split it into smaller independent **sequential tasks**.
 
 For example, instead of processing one huge range from beginning to end:
 
@@ -23,9 +23,7 @@ Task 4:   300,000 - 399,999
 ...
 ```
 
-Each of these pieces is still an ordinary sequential task.
-
-For example, one worker may simply execute:
+Each piece is still ordinary sequential code:
 
 ```go
 for i := start; i < end; i++ {
@@ -33,47 +31,50 @@ for i := start; i < end; i++ {
 }
 ```
 
-The important part is that these sequential tasks are independent. Because they do not depend on each other, they can be executed in parallel.
+The important property is that the pieces are independent. Because they do not depend on each other, they can run at the same time.
 
-The first level of parallelism is inside one machine. If the CPU has several cores, different sequential tasks can run at the same time on different cores:
+### First: scale across CPU cores inside one computer
+
+The first level of parallelism is local.
+
+If one computer has several CPU cores, different sequential tasks can run on different cores:
 
 ```text
-one computer
+ONE COMPUTER
 
-CPU Core 1 -> Task 1
-CPU Core 2 -> Task 2
-CPU Core 3 -> Task 3
-CPU Core 4 -> Task 4
+CPU Core 1 -> Task A
+CPU Core 2 -> Task B
+CPU Core 3 -> Task C
+CPU Core 4 -> Task D
 ```
 
-So instead of executing:
+Instead of one core doing this:
 
 ```text
-Task 1
-then Task 2
-then Task 3
-then Task 4
+Task A -> Task B -> Task C -> Task D
 ```
 
-we execute them at the same time:
+several cores can do this:
 
 ```text
-Task 1 -------->
-Task 2 -------->
-Task 3 -------->
-Task 4 -------->
+Task A -------->
+Task B -------->
+Task C -------->
+Task D -------->
 ```
 
-This is the first source of acceleration: several CPU cores execute independent sequential work in parallel instead of one core performing all pieces one after another.
+This is already useful parallelism: the individual tasks remain sequential, but several independent sequential tasks execute at the same time.
 
-Go is especially convenient for this style of programming because goroutines, channels, and `select` make it easy to organize many independent workers.
+Go is especially convenient for this model because goroutines, channels, and `select` make it natural to organize many independent workers.
 
-But at this point we are still limited by the hardware of one computer. If one machine has eight useful CPU cores and all eight are busy, there are no more local CPU cores to add.
+But local parallelism has a physical limit: one computer has only so many CPU cores.
 
-The natural next step is to use CPU cores from other machines as well:
+### Then: scale across several computers
+
+When all useful cores of one machine are busy, the next step is to add cores from other machines.
 
 ```text
-Computer A
+Machine A
 
 Core 1 -> Task A
 Core 2 -> Task B
@@ -81,18 +82,15 @@ Core 3 -> Task C
 Core 4 -> Task D
 
 
-Computer B
+Machine B
 
 Core 1 -> Task E
 Core 2 -> Task F
 Core 3 -> Task G
 Core 4 -> Task H
-```
 
-Then another machine can join:
 
-```text
-Computer C
+Machine C
 
 Core 1 -> Task I
 Core 2 -> Task J
@@ -100,9 +98,9 @@ Core 3 -> Task K
 Core 4 -> Task L
 ```
 
-Now the same computation can use CPU resources belonging to many different computers.
+Now the computation is no longer limited to the cores of one computer.
 
-Those computers do not have to be in the same rack, datacenter, country, or continent. Each machine can run the same Go worker program and the same sequential worker loop. The individual computations remain sequential; the acceleration comes from executing many independent sequential computations at the same time.
+The machines may be in the same rack, another datacenter, another city, or another continent. Each machine can run the same worker logic and execute ordinary sequential tasks.
 
 Conceptually:
 
@@ -112,45 +110,45 @@ large problem
      v
 split into independent sequential tasks
      |
-     +--> Task A -> CPU core on Machine 1
+     +--> CPU core on Machine A
      |
-     +--> Task B -> CPU core on Machine 1
+     +--> CPU core on Machine A
      |
-     +--> Task C -> CPU core on Machine 2
+     +--> CPU core on Machine B
      |
-     +--> Task D -> CPU core on Machine 3
+     +--> CPU core on Machine C
      |
-     +--> Task E -> CPU core on Machine 4
+     +--> CPU core on Machine D
 ```
 
-This is where ordinary Go channels reach a physical boundary.
+This is what NetChan is for.
 
-A native Go channel belongs to one Go runtime. It cannot directly connect a goroutine running on Computer A with a goroutine running on Computer B.
+A native Go channel belongs to one Go runtime. It cannot directly connect a goroutine on Machine A with a goroutine on Machine B.
 
-**NetChan extends the same channel-oriented model across the network.**
+**NetChan extends the same channel-oriented model across the network, so workers on other computers can join the same computation.**
 
 In simple terms:
 
 ```text
 Go:
-parallel execution of independent sequential tasks
-across CPU cores of one machine
+independent sequential tasks
+running in parallel on CPU cores of one machine
 
 NetChan:
 the same model,
-but CPU cores and workers from other machines
-can join the same computation
+but CPU cores from other machines
+can join the worker pool
 ```
 
-NetChan does not make one CPU instruction magically faster. It makes additional execution resources available to the same concurrency-oriented design.
+NetChan does not make one CPU instruction magically faster. It expands the pool of execution resources available to the same task-oriented design.
 
 ---
 
 ## Shared task channel
 
-A natural NetChan architecture is one shared task channel.
+A simple distributed architecture uses one shared task channel.
 
-All workers listen to the same channel and wait for work:
+Workers wait for work:
 
 ```text
                      +----------+
@@ -166,14 +164,19 @@ All workers listen to the same channel and wait for work:
                      +----------+
 ```
 
-A worker may be a goroutine using another local CPU core, the same worker program on another physical machine, a server in another datacenter, or a machine on another continent.
+A worker may be:
 
-Each free worker blocks while waiting for a task. It does not need to poll the scheduler continuously.
+- a goroutine using another local CPU core;
+- the same worker program on another machine;
+- a server in another datacenter;
+- a machine on another continent.
+
+When there is no work, the worker simply blocks on the task channel.
 
 ```text
 wait for task
      |
-     | no work
+     | no task
      +-------------------- blocked
      |
      | task arrives
@@ -184,169 +187,350 @@ receive task
 execute sequential work
      |
      v
-return result
+finish
      |
      v
 wait for next task
 ```
 
-The same mental model works whether the worker is nearby or across the network.
+The same mental model works locally and across the network.
 
 ---
 
-## A reply channel inside every task
+# Two task modes
 
-Every task can carry its own temporary reply channel.
+NetChan tasks have two simple modes:
 
-Conceptually:
+```text
+1. Fire-and-Forget
+
+2. Managed Task
+```
+
+The difference is whether the sender needs any communication with the task after it has been dispatched.
+
+---
+
+## 1. Fire-and-Forget
+
+The simplest task contains only the work itself.
 
 ```go
 type Task struct {
-    Work  Work
-    Reply chan<- Result
+    Work Work
 }
 ```
 
-The scheduler does not only send:
+The sender publishes it:
 
 ```text
-"do this work"
+Task Owner --------------------> Worker
+                 Work
 ```
 
-It sends:
+and forgets about it.
+
+The worker receives the task, performs the sequential work, and finishes.
 
 ```text
-"do this work,
-and return the answer through this temporary channel"
+send task
+    |
+    v
+worker receives task
+    |
+    v
+execute
+    |
+    v
+finish
 ```
 
-This is possible because NetChan can transfer a directional channel inside another channel.
+No task-local communication channels are created.
+
+This mode is appropriate when the sender does not need:
+
+- a result;
+- cancellation;
+- progress information;
+- additional instructions;
+- clarification during execution.
+
+The model is simply:
 
 ```text
-shared task channel
-        |
-        v
-+---------------------+
-| Task                |
-|                     |
-| Work                |
-| Reply channel ------+--------+
-+---------------------+        |
-                               v
-                         return result
+send -> execute -> forget
 ```
 
-The temporary Reply channel belongs to one logical task.
+---
 
-The important v2 task model is that this same Reply channel also represents the lifetime of the task.
+## 2. Managed Task
 
-There is no separate per-task cancellation channel in this model.
+If the sender needs a result **or** wants to control the task while it is running, the task is managed.
+
+A managed task always creates **two task-scoped directional channels**:
 
 ```text
-Task
- |
- +--> Work
- |
- +--> temporary Reply channel
+Request
+Reply
 ```
 
-The one temporary Reply channel means both:
-
-```text
-where the answer should go
-```
-
-and:
-
-```text
-whether anybody still needs the answer
-```
-
-As long as the Reply channel is alive, the task is still relevant.
-
-If Reply is closed, the meaning is simple:
-
-```text
-nobody needs this result anymore
-```
-
-For example:
-
-- another worker already found the answer;
-- another machine completed the same logical task faster;
-- the required block was already found;
-- the parent computation completed;
-- the scheduler cancelled the work;
-- the input state changed;
-- the requester disappeared.
-
-So the temporary Reply channel is simultaneously:
-
-```text
-return path
-+
-task lifetime
-+
-cancellation signal
-```
-
-### Checking task lifetime
-
-Long-running workers should periodically observe the lifecycle of the transferred Reply capability at sensible interruption points inside their sequential loop.
+Never only one.
 
 Conceptually:
 
 ```go
-for candidate := start; candidate < end; candidate++ {
-    if replyIsClosed(task.Reply) {
-        return
-    }
-
-    result := calculate(candidate)
-
-    if valid(result) {
-        sendResult(task.Reply, result)
-        return
-    }
+type ManagedTask struct {
+    Work    Work
+    Request <-chan Request
+    Reply   chan<- Reply
 }
 ```
 
-`replyIsClosed` and `sendResult` above describe the intended v2 Reply-lifecycle API semantics: observing remote Reply closure must be safe and must not require attempting a send to an already closed channel.
-
-The worker logic is intentionally simple:
+The directions are always named from the point of view of the **task owner**, the side that created and dispatched the task:
 
 ```text
-Reply alive?
+Task Owner                         Worker
+
+          Work --------------------->
+
+          Request ------------------->
+
+          <---------------------- Reply
+```
+
+`Request` flows from the task owner to the worker.
+
+`Reply` flows from the worker back to the task owner.
+
+Each channel is simplex. Together they create a temporary duplex session for exactly one task.
+
+---
+
+## Request: owner -> worker
+
+The `Request` channel is the control path from the task owner to the worker.
+
+It can be used for things such as:
+
+```text
+Stop
+Cancel
+ChangePriority
+UpdateParameters
+ChangeRange
+RequestProgress
+ClarifyWork
+```
+
+A worker can observe it naturally with `select` while continuing its sequential computation:
+
+```go
+for candidate := start; candidate < end; candidate++ {
+    select {
+    case request, open := <-task.Request:
+        if !open {
+            // The task owner ended this managed task.
+            return
+        }
+
+        handleRequest(request)
+
+    default:
+    }
+
+    check(candidate)
+}
+```
+
+If cancellation is all that is needed, the owner can close the request side.
+
+The worker observes the closed receive channel and stops:
+
+```text
+Task Owner
     |
- +--+--+
- |     |
-yes    no
- |     |
- v     v
-work   stop
+    | close Request
+    v
+ Worker
+    |
+    v
+stop current computation
+    |
+    v
+discard unfinished work
+    |
+    v
+return to worker pool
 ```
 
-If Reply remains alive, the worker continues computing.
+This follows ordinary Go semantics: a receive from a closed channel is immediately selectable.
 
-If Reply is closed, the worker does not panic and does not continue wasting resources. It abandons the obsolete computation and immediately returns to the shared worker pool:
+---
+
+## Reply: worker -> owner
+
+The `Reply` channel is the return path.
+
+The worker can use it for:
 
 ```text
-Reply closed
-     |
-     v
-stop current task
-     |
-     v
-discard unfinished work
-     |
-     v
-return to shared task channel
-     |
-     v
-block until another task arrives
+Result
+Progress
+Status
+PartialResult
+Error
 ```
 
-This makes the temporary Reply channel part of scheduling rather than merely a place to send an answer.
+The simplest case is a final result:
+
+```go
+task.Reply <- Reply{
+    Result: result,
+}
+```
+
+Conceptually:
+
+```text
+Worker
+   |
+   | result
+   v
+ Reply
+   |
+   v
+Task Owner
+```
+
+The important distinction is that `Reply` is for returning information, not for discovering whether the task is still wanted.
+
+A sender cannot safely do this with a send-only Go channel:
+
+```text
+check whether Reply is open
+        |
+        v
+send to Reply
+```
+
+because another goroutine may close the channel between the check and the send.
+
+That is why a managed task has the opposite-direction `Request` channel as well.
+
+`Request` carries task lifetime and control. `Reply` carries information back.
+
+---
+
+## Zero channels or two channels
+
+The task model is deliberately binary.
+
+```text
+FIRE-AND-FORGET
+
+Work
+```
+
+or:
+
+```text
+MANAGED TASK
+
+Work
++ Request
++ Reply
+```
+
+There is no managed form with only `Request`, and there is no managed form with only `Reply`.
+
+If communication is required, both directions exist.
+
+This keeps the lifecycle predictable and avoids making one channel perform two conflicting jobs.
+
+---
+
+## Request and Reply are task-scoped
+
+The `Request` / `Reply` pair belongs only to the task that created it.
+
+The pair is temporary and is never reused for the next task.
+
+```text
+Task A
+ |
+ +-- Work A
+ +-- Request A
+ +-- Reply A
+
+Task A finishes
+ |
+ +-- Request A ends
+ +-- Reply A ends
+
+
+Task B
+ |
+ +-- Work B
+ +-- Request B
+ +-- Reply B
+```
+
+Task B gets a completely new pair.
+
+The lifetime is therefore:
+
+```text
+Task created
+    |
+    +--> Request created
+    +--> Reply created
+    |
+    v
+Task executes
+    |
+    v
+Task completes or is cancelled
+    |
+    +--> Request ends
+    +--> Reply ends
+```
+
+The same `Request` and `Reply` channels are never recycled for another logical task.
+
+This makes them **task-scoped capabilities**: they exist exactly for the lifetime of one managed task.
+
+---
+
+## Why this is useful
+
+The shared task channel distributes work.
+
+The task-local `Request` / `Reply` pair manages one particular piece of work after a worker has taken it.
+
+```text
+shared task channel
+       |
+       v
++------------------------+
+| Managed Task           |
+|                        |
+| Work                   |
+| Request -------------->+------> Worker control
+| Reply   <--------------+<------ Worker result
++------------------------+
+```
+
+So there are two levels:
+
+```text
+Shared channel
+    =
+where workers obtain tasks
+
+Task-scoped Request / Reply
+    =
+communication for one running task
+```
 
 ---
 
@@ -361,65 +545,47 @@ Suppose there are:
 100 available workers
 ```
 
-One option is to leave 90 workers idle.
-
-Another option is to deliberately publish multiple executions of the same logical task:
+The scheduler may let several workers compete on the same important logical task.
 
 ```text
 Task A -> Worker 01
 Task A -> Worker 02
 Task A -> Worker 03
 ...
-Task A -> Worker 10
 ```
 
-All workers race on the same logical task.
+All copies belong to the same managed task session and may share its task-scoped control/result capabilities.
 
 ```text
 Worker 01 -------\
 Worker 02 --------\
-Worker 03 ---------> first valid result wins
+Worker 03 ---------> first valid Reply wins
 Worker 04 --------/
 Worker 05 -------/
 ```
 
-The first valid answer is accepted. The scheduler then closes the temporary Reply lifecycle for that logical task.
+When the first acceptable result arrives through `Reply`, the task owner can terminate the remaining work through `Request`.
 
-The remaining workers observe that Reply is no longer alive and stop their copies:
-
-```text
-Reply closed
-     |
-     +-------> Worker 01 stops
-     |
-     +-------> Worker 02 stops
-     |
-     +-------> Worker 04 stops
-     |
-     +-------> Worker 05 stops
-```
-
-Those workers immediately return to the common pool and can be reused for other work.
-
-This is a simple form of distributed speculative execution:
+For cancellation, closing `Request` is enough:
 
 ```text
-run several competitors
-        |
-        v
-accept the fastest valid result
-        |
-        v
-close the task Reply lifecycle
-        |
-        v
-stop all losing copies
-        |
-        v
-reuse their resources
+first valid result
+       |
+       v
+Task Owner closes Request
+       |
+       +-------> Worker 01 stops
+       |
+       +-------> Worker 02 stops
+       |
+       +-------> Worker 04 stops
+       |
+       +-------> Worker 05 stops
 ```
 
-The same strategy can be used between cores of one machine. NetChan extends it to independent computers.
+The losing workers abandon obsolete work and return to the common pool.
+
+This is a simple form of distributed speculative execution.
 
 ---
 
@@ -427,9 +593,7 @@ The same strategy can be used between cores of one machine. NetChan extends it t
 
 Competition is only one strategy.
 
-Often the better strategy is to divide a large problem into increasingly smaller independent sequential tasks.
-
-For example:
+Often the better strategy is to make many smaller independent tasks.
 
 ```text
 0 ------------------------------------------------------ 100,000,000
@@ -445,7 +609,7 @@ Task 4:   3,000,000 - 3,999,999
 ...
 ```
 
-Different workers execute different parts:
+and then:
 
 ```text
 Machine A / Core 1 -> Task 1
@@ -455,17 +619,17 @@ Machine B / Core 2 -> Task 4
 Machine C / Core 1 -> Task 5
 ```
 
-When one worker finishes, it takes the next available task.
+Each CPU core still executes ordinary sequential code.
 
-Fast machines naturally consume more jobs. Slow machines naturally consume fewer.
+The speedup comes from running many independent sequential tasks at the same time.
 
-So the same architecture scales first across CPU cores and then across entire computers.
+Fast machines naturally finish more tasks. Slow machines naturally finish fewer.
 
 ---
 
 ## Heterogeneous workers
 
-A distributed pool does not need identical hardware.
+A distributed worker pool does not need identical hardware.
 
 It may contain:
 
@@ -475,103 +639,43 @@ a desktop CPU
 a 64-core server
 an ARM machine
 a cloud VM
-a large cluster node
+a GPU worker
+a storage-heavy machine
 ```
 
-Each worker can maintain statistics about its own performance, for example:
+Workers can maintain performance statistics such as:
 
 ```text
 operations / second
 iterations / second
 average task runtime
 factoring speed
-hashing speed
 encoding speed
 rendering speed
 ```
 
-A task may also carry estimated complexity or a desired completion time.
+A scheduler can use those measurements as an application-level policy when deciding how large a task should be or where it should run.
 
-A weak worker may estimate:
-
-```text
-expected runtime: 12 s
-target runtime: < 500 ms
-```
-
-and return or requeue the task instead of spending a long time on work that another machine can execute much faster.
-
-A more powerful worker may estimate:
+For example:
 
 ```text
-expected runtime: 180 ms
+Task target: < 500 ms
+
+Worker A estimate: 8.2 s   -> unsuitable
+Worker B estimate: 190 ms  -> execute
 ```
 
-and accept it.
-
-This allows heterogeneous machines to cooperate in one pool while still assigning work efficiently.
+NetChan supplies the communication model; scheduling policy belongs to the application.
 
 ---
 
-## Example: mining and factoring
+## Example workloads
 
-Mining and factoring workloads are easy examples of this model.
+This model is useful whenever a large problem can be decomposed into independent work.
 
-A large search or factoring problem can be decomposed into many independent sequential pieces.
+Examples include:
 
-Instead of:
-
-```text
-one CPU
-   |
-   v
-calculate everything sequentially
-```
-
-we can have:
-
-```text
-                     mining/factoring problem
-                              |
-                        decompose work
-                              |
-          +-------------------+-------------------+
-          |                   |                   |
-          v                   v                   v
-      Machine A           Machine B           Machine C
-       Core 1              Core 1              Core 1
-          |                   |                   |
-     sequential          sequential          sequential
-        task                task                task
-```
-
-More machines mean more CPU cores participating in the same computation.
-
-The scheduler can either divide the search into different ranges or deliberately send the same important task to several workers and let them compete.
-
-When one worker finds the required result, the temporary Reply lifecycle is closed and all unnecessary copies stop.
-
----
-
-## It is not limited to CPU
-
-The same model is useful whenever a larger problem can be decomposed into independent work.
-
-Workers may represent access to:
-
-- CPU cores;
-- GPUs;
-- memory-heavy machines;
-- storage nodes;
-- network bandwidth;
-- rendering machines;
-- video encoders;
-- specialized accelerators;
-- external hardware.
-
-Typical workloads include:
-
-- mining and factoring;
+- factoring and mining-style workloads;
 - large search spaces;
 - rendering;
 - video and media processing;
@@ -584,13 +688,13 @@ Typical workloads include:
 - batch data processing;
 - independent AI inference jobs.
 
-The common property is simple: the larger problem can be decomposed into independent sequential tasks.
+Workers do not have to represent only CPU cores. They may also represent GPUs, memory-heavy machines, storage nodes, network resources, accelerators, or external hardware.
 
 ---
 
 ## The idea in one picture
 
-Ordinary local Go concurrency:
+First, scale inside one computer:
 
 ```text
 ONE MACHINE
@@ -601,7 +705,7 @@ Core 3 -> sequential task C
 Core 4 -> sequential task D
 ```
 
-Distributed execution with NetChan:
+Then NetChan lets the same model grow beyond that machine:
 
 ```text
 Machine A / Core 1 -> sequential task A
@@ -623,26 +727,32 @@ So the system grows naturally:
 one sequential computation
         |
         v
-many sequential tasks
+many independent sequential tasks
         |
         v
-many CPU cores
+many CPU cores on one machine
         |
         v
-many CPUs
+NetChan
         |
         v
-many machines
+CPU cores on many machines
         |
         v
-distributed concurrent system
+distributed worker pool
 ```
 
-The individual algorithms remain simple sequential code.
+And each distributed task uses one of two modes:
 
-The power comes from executing many independent sequential tasks in parallel.
+```text
+Fire-and-Forget
+    Work
 
-NetChan extends this idea from the cores available inside one computer to resources available across many computers, while keeping the programming model close to ordinary Go:
+Managed Task
+    Work + Request + Reply
+```
+
+The programming model remains close to ordinary Go:
 
 ```text
 goroutines
@@ -651,7 +761,7 @@ select
 close
 ```
 
-The difference is that the workers may now live on completely different machines.
+The difference is that the workers may now live on completely different computers.
 
 ---
 
@@ -669,21 +779,30 @@ connection.Send <- message
 message = <-connection.Receive
 ```
 
-In protocol v2, a network channel can carry values, reply channels, and long-lived
-session channels. It preserves message order, provides backpressure, recovers
-from temporary disconnections, and distinguishes receipt by the remote node from
-an actual read by the remote goroutine.
+In protocol v2, a network channel can carry ordinary values and directional
+channels inside messages. This allows a message to create temporary task-scoped
+communication paths such as `Request` and `Reply`, as well as longer-lived
+session channels.
 
-The v2 task model uses a transferred temporary Reply channel as both the result
-path and the lifecycle of a logical task. Closing that Reply capability makes
-remote workers stop obsolete copies of the task without requiring a separate
-per-task `Done` channel.
+It preserves message order, provides backpressure, recovers from temporary
+disconnections, and distinguishes receipt by the remote node from an actual read
+by the remote goroutine.
+
+For task scheduling, the v2 model has two application-level forms:
+
+```text
+Fire-and-Forget: Work
+Managed Task:    Work + Request + Reply
+```
+
+A managed task's `Request` and `Reply` channels are created specifically for that
+task, live for that task's lifetime, and are never reused for the next task.
 
 NetChan still does not hide the physics of a distributed system: the network
 requires encoding and a temporary copy, while two independent Go schedulers
-cannot perform a single atomic `select`. These boundaries are represented by
-explicit channels and protocol states rather than message loss or hidden shared
-state.
+cannot perform a single atomic cross-machine `select`. These boundaries are
+represented by explicit channels and protocol states rather than message loss or
+hidden shared state.
 
 > **Project status:** v2 is the current major version. New releases follow SemVer,
 > pass mandatory security checks, and enter `main` only through pull requests.
@@ -703,7 +822,7 @@ and the acknowledgement protocol act as the network hypervisor:
 4. the read acknowledgement returns to the sender;
 5. the temporary encoded copy is released.
 
-On the wire, this transition is represented by the sequence:
+On the wire, this transition is represented by:
 
 ```text
 DATA → PREPARED → DELIVERED → RELEASE
@@ -720,8 +839,8 @@ physical copy for disconnection recovery, and it exists only until acknowledgeme
 |---|---|
 | Sending was not synchronized with the remote read | `Deliver` completes only after the remote application reads the value |
 | A network error could lose a message | Unacknowledged-message journal, ACKs, replay, and deduplication |
-| Primarily values could be transferred | Messages can carry directional reply and session channels |
-| Tasks had no network-native lifecycle | A temporary transferred Reply capability is the task result path and lifecycle; closing it cancels obsolete work |
+| Primarily values could be transferred | Messages can carry directional nested channels |
+| Tasks had no network-native communication lifecycle | Managed tasks can carry task-scoped `Request` and `Reply` channels |
 | Buffering was implicit behavior | `Config.Capacity` and a bounded protocol window provide explicit backpressure |
 | Gob was used | A custom bounded codec based on `encoding/binary` |
 | A physical disconnection ended the exchange | The logical session persists and reconnects its transport |
@@ -743,10 +862,6 @@ connected client appears on its ordinary Go channel, `Channels`:
 ```go
 connection := <-listener.Channels
 ```
-
-The listener also exposes `Errors`, `Done`, and the actual bound `Address`. The
-latter is especially useful with `Listen[Message]("127.0.0.1:0")`, when the
-operating system selects the port.
 
 Both sides receive the same `*netchan.Channel[T]` type:
 
@@ -774,8 +889,6 @@ import "github.com/matveynator/netchan/v2"
 
 ## Minimal server
 
-The server accepts clients and starts an independent goroutine for each one.
-
 ```go
 package main
 
@@ -799,14 +912,13 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    serverTLS := &tls.Config{
-        Certificates: []tls.Certificate{certificate},
-        MinVersion:   tls.VersionTLS13,
-    }
 
     listener, err := netchan.Listen[string](
         "127.0.0.1:9876",
-        netchan.Config{TLS: serverTLS},
+        netchan.Config{TLS: &tls.Config{
+            Certificates: []tls.Certificate{certificate},
+            MinVersion:   tls.VersionTLS13,
+        }},
     )
     if err != nil {
         log.Fatal(err)
@@ -839,19 +951,19 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    rootCertificates := x509.NewCertPool()
-    if !rootCertificates.AppendCertsFromPEM(certificatePEM) {
+
+    roots := x509.NewCertPool()
+    if !roots.AppendCertsFromPEM(certificatePEM) {
         log.Fatal("server CA certificate is invalid")
-    }
-    clientTLS := &tls.Config{
-        RootCAs:    rootCertificates,
-        ServerName: "netchan.example",
-        MinVersion: tls.VersionTLS13,
     }
 
     connection, err := netchan.Dial[string](
         "127.0.0.1:9876",
-        netchan.Config{TLS: clientTLS},
+        netchan.Config{TLS: &tls.Config{
+            RootCAs:    roots,
+            ServerName: "netchan.example",
+            MinVersion: tls.VersionTLS13,
+        }},
     )
     if err != nil {
         log.Fatal(err)
@@ -866,13 +978,9 @@ func main() {
 }
 ```
 
-This is the minimal form. In a long-lived application, sending and receiving
-should be combined with `Done` through an ordinary `select`.
-
 ## `select`, `close`, and `range`
 
-All public NetChan directions are real Go channels. They require no special read
-or write methods.
+All public NetChan directions are real Go channels.
 
 ```go
 func exchange(connection *netchan.Channel[string], outgoing string) (string, bool) {
@@ -891,7 +999,7 @@ func exchange(connection *netchan.Channel[string], outgoing string) (string, boo
 }
 ```
 
-For a graceful shutdown, the owner closes the sending side and waits for `Done`:
+For graceful shutdown, the owner closes the sending side and waits for `Done`:
 
 ```go
 func closeConnection(connection *netchan.Channel[string]) {
@@ -908,8 +1016,8 @@ func closeConnectionWithMethod(connection *netchan.Channel[string]) error {
 }
 ```
 
-After `Close`, the ordinary Go rules apply: the application must not send on a
-closed channel. Stop sender goroutines first, then close the direction you own.
+After `Close`, ordinary Go rules apply: the application must not send on a closed
+channel. Stop sender goroutines first, then close the direction you own.
 
 ## Go channel properties implemented in v2
 
@@ -946,8 +1054,7 @@ the logical channel finishes, `Receive`, `Errors`, and `Done` are closed, enabli
 
 ### Buffering
 
-By default, `Send` is unbuffered. Local capacity can be configured independently
-on each side:
+By default, `Send` is unbuffered. Local capacity can be configured independently:
 
 ```go
 func dialBuffered(address string) (*netchan.Channel[string], error) {
@@ -955,25 +1062,20 @@ func dialBuffered(address string) (*netchan.Channel[string], error) {
 }
 ```
 
-`Capacity` applies only to the local `Send`. `Receive` always remains unbuffered
-so the protocol can determine the exact read point for `Deliver`.
-
-### `select/case`
-
-A goroutine can choose among the local directions of several network channels,
-a timer, and a completion channel using the same `select` statement as with any
-Go channels. A selected `case connection.Send <- message` means acceptance by
-the local NetChan process; strict network rendezvous is expressed through
-`Deliver`.
+`Capacity` applies only to the local `Send`. `Receive` remains unbuffered so the
+protocol can determine the exact application read point for `Deliver`.
 
 ### A channel inside a channel
 
-A directional channel in a message transfers the right to continue communicating,
-not accumulated values. This is the primary mechanism for reply channels and
-long-lived session channels without a client table or shared mutable state.
+A directional channel inside a message transfers the right to continue
+communicating, not accumulated values.
 
-For task scheduling, a temporary Reply capability also represents task lifetime:
-closing it means that remote work associated with that logical task is obsolete.
+This is the mechanism used for task-scoped `Request` / `Reply` communication and
+for longer-lived session channels without requiring a global client table or
+shared mutable state.
+
+A managed task creates a fresh pair for that task. The pair is not reused by the
+next task.
 
 ## Ordinary sending and strict rendezvous
 
@@ -983,8 +1085,8 @@ A Go library cannot override the `<-` operator:
 connection.Send <- message
 ```
 
-This operation completes when the local NetChan process accepts the value. At
-that point, the sender has transferred ownership and must not modify the value.
+This completes when the local NetChan actor accepts the value. At that point, the
+sender has transferred ownership and must not modify the value.
 
 Use `Deliver` when the sender must wait for the remote goroutine to actually read
 the value:
@@ -996,125 +1098,97 @@ func sendAndWait(connection *netchan.Channel[string], message string) error {
 ```
 
 `Deliver` returns `nil` only after the remote `Receive` is read. If the channel
-closes permanently, it returns `netchan.ErrChannelClosed`. An encoding error for
-the specific value is also returned directly.
+closes permanently, it returns `netchan.ErrChannelClosed`.
 
-## A channel inside a channel: task and single-reply lifecycle
+## Managed task example
 
-Each task creates its own temporary reply channel. The handler needs no client
-address, request identifier, or shared table of pending results.
+A managed task carries both directions:
 
 ```go
-type Result struct {
-    Text string
+type TaskRequest struct {
+    Stop bool
+}
+
+type TaskReply struct {
+    Result string
 }
 
 type Task struct {
-    Text  string
-    Reply chan<- Result
+    Text    string
+    Request <-chan TaskRequest
+    Reply   chan<- TaskReply
 }
 ```
 
-The requester creates one reply channel and sends it inside the task:
-
-```go
-func requestTask(connection *netchan.Channel[Task], text string) (Result, bool) {
-    reply := make(chan Result)
-    task := Task{Text: text, Reply: reply}
-
-    select {
-    case connection.Send <- task:
-    case <-connection.Done:
-        return Result{}, false
-    }
-
-    select {
-    case result, open := <-reply:
-        return result, open
-    case <-connection.Done:
-        return Result{}, false
-    }
-}
-```
-
-The task's Reply is intentionally more than a return address. It is the logical
-lifetime of that task.
-
-The v2 task lifecycle semantics are:
-
-```text
-Reply alive   -> task is relevant -> keep working
-Reply closed  -> task is obsolete -> stop immediately
-result found  -> send it to Reply
-```
-
-Long-running handlers observe the Reply lifecycle between computational steps.
-The public convenience API for observing remote Reply closure is intended to be
-safe and must not require a speculative send to a closed channel.
+The task owner creates a fresh pair for this task and transfers the worker-facing
+directions inside the task.
 
 Conceptually:
 
+```text
+create Task A
+    |
+    +--> create Request A
+    +--> create Reply A
+    |
+    v
+send Task A
+    |
+    v
+worker executes Task A
+    |
+    +--> receive control through Request A
+    +--> send information through Reply A
+    |
+    v
+Task A ends
+    |
+    +--> Request A ends
+    +--> Reply A ends
+```
+
+A worker can combine computation with task control using ordinary `select`:
+
 ```go
 func handleTask(task Task) {
-    for step := firstStep(task); ; step = nextStep(step) {
-        if replyIsClosed(task.Reply) {
-            return
+    for step := 0; ; step++ {
+        select {
+        case request, open := <-task.Request:
+            if !open || request.Stop {
+                return
+            }
+        default:
         }
 
-        result, found := calculateStep(step)
+        result, found := calculateStep(task.Text, step)
         if found {
-            sendResult(task.Reply, result)
+            task.Reply <- TaskReply{Result: result}
             return
         }
     }
 }
 ```
 
-The requester or scheduler closes Reply as soon as the result is no longer
-needed. Every worker executing a copy of the same logical task observes that
-closure, abandons the obsolete computation, returns to the common worker pool,
-and blocks until another task arrives.
-
-A nested channel becomes active only after the application actually reads the
-parent task. An unaccepted task does not start hidden work. One live channel may
-be transferred in several messages: the remote side receives the same proxy.
-After closure, a terminal barrier retains it until all previously accepted parent
-messages are resolved, then releases the capability on both sides.
+The exact request and reply message types are application-defined. A simple
+application may use `Request` only for cancellation and `Reply` only for the final
+result; a richer application may carry progress, updates, parameter changes, or
+status messages.
 
 ## Long-lived session channel
 
-A reply channel usually lives until one response. A session channel remains in a
-dedicated goroutine and carries a stream of messages until either side closes it.
+Task-scoped `Request` / `Reply` channels normally end with their task. A different
+application may deliberately transfer a longer-lived session channel and keep it
+in a dedicated goroutine until either side closes it.
 
 ```go
 type Subscription struct {
     Events chan<- string
     Done   <-chan struct{}
 }
-
-func publishEvents(subscription Subscription, events <-chan string) {
-    defer close(subscription.Events)
-
-    for {
-        select {
-        case event, open := <-events:
-            if !open {
-                return
-            }
-            select {
-            case subscription.Events <- event:
-            case <-subscription.Done:
-                return
-            }
-        case <-subscription.Done:
-            return
-        }
-    }
-}
 ```
 
-Such a process stores no subscriber state: the transferred channels hold the
-entire right of contact.
+The important distinction is scope: task channels belong to one task; session
+channels may deliberately outlive an individual task.
 
 ## Reconnection and delivery guarantees
 
@@ -1132,8 +1206,7 @@ even when the physical TCP/TLS transport is temporarily replaced. NetChan v2:
 Recovery attempts use increasing delays up to five seconds. A disconnected
 logical session is retained for five minutes. If the peer has already lost its
 state, the channel closes permanently and `Errors` may report
-`netchan.ErrSessionExpired`. Refusal to accept a new session is returned from
-`Dial` as `netchan.ErrSessionRejected`.
+`netchan.ErrSessionExpired`.
 
 The no-duplicate-delivery guarantee applies within a live logical session. After
 a complete restart of both processes, exactly-once delivery requires an
@@ -1146,11 +1219,10 @@ Closing the corresponding `Done` is the reliable terminal signal for the root
 logical connection.
 
 If an ordinary send accepts a value that cannot be encoded, NetChan reports the
-error and terminates the channel: the value is not silently discarded. `Deliver`
-returns such an error directly.
+error and terminates the channel. `Deliver` returns such an error directly.
 
-A graceful `Close` waits for values that have already been accepted. If delivery
-is no longer required, use an explicit abort:
+A graceful `Close` waits for values already accepted. If delivery is no longer
+required, use an explicit abort:
 
 ```go
 func abortConnection(connection *netchan.Channel[string]) error {
@@ -1162,7 +1234,7 @@ func abortConnection(connection *netchan.Channel[string]) error {
 
 ## Physical network boundaries
 
-Protocol v2 cannot eliminate the physical properties of a distributed system:
+NetChan cannot eliminate the physical properties of a distributed system:
 
 - two computers do not share a goroutine scheduler, so an atomic cross-machine
   `select` is impossible;
@@ -1176,11 +1248,7 @@ NetChan makes these boundaries explicit through `Deliver`, root-channel `Done`,
 
 ## TLS
 
-Every `Listen` and `Dial` requires `Config.TLS`. A call without TLS configuration
-returns an error, preventing an application from accidentally enabling encryption
-without peer authentication.
-
-A production configuration uses an ordinary `*tls.Config`:
+Every `Listen` and `Dial` requires `Config.TLS`.
 
 ```go
 func listenWithTLS(address string, serverTLS *tls.Config) (*netchan.Listener[string], error) {
@@ -1192,9 +1260,7 @@ func dialWithTLS(address string, clientTLS *tls.Config) (*netchan.Channel[string
 }
 ```
 
-This example requires the `crypto/tls` and
-`github.com/matveynator/netchan/v2` imports. If `MinVersion` is unset, NetChan
-selects TLS 1.3.
+If `MinVersion` is unset, NetChan selects TLS 1.3.
 
 ## Binary encoding
 
@@ -1215,13 +1281,12 @@ pointers, and nested bidirectional `chan T` channels are not transferred.
 
 Generics are used only for the typed public boundary. `reflect` is confined to
 the codec and is needed to build a schema for an arbitrary `T` and find
-directional channels in a struct. A type can control its format completely
-through `MarshalBinary` and `UnmarshalBinary`.
+directional channels in a struct.
 
 ## Protective limits
 
-The v2 limits are not missing capabilities. They prevent an untrusted peer or a
-slow receiver from consuming memory without bound:
+The v2 limits prevent an untrusted peer or slow receiver from consuming memory
+without bound:
 
 - wire frames are limited to 16 MiB;
 - each value may contain up to 16 nested channels;
@@ -1246,12 +1311,7 @@ sides of a connection must use protocol v2 and matching message schemas.
 
 Versions are published as immutable Git tags following SemVer. A patch release
 fixes bugs without changing the API, a minor release adds API compatibly, and an
-incompatible change requires a new major version and import path. The latest
-stable release is always available through the [permanent link](https://github.com/matveynator/netchan/releases/latest).
-
-Protocol v2 is the second published version. Intermediate implementations
-numbered 2, 3, and 4 during development were attempts at the same transition
-from protocol v1 and are not considered separately released protocols.
+incompatible change requires a new major version and import path.
 
 ## TODO and future transports
 
@@ -1275,8 +1335,8 @@ NETCHAN_NETWORK_TEST=1 go test -run 'TestPublic(ListenAndDial|ConfigAndListenerL
 
 Questions, suggestions, and bug reports are welcome in
 [GitHub Issues](https://github.com/matveynator/netchan/issues). Real-world
-scenarios involving temporary disconnections, long streaming sessions, and
-channels inside messages are especially useful.
+scenarios involving temporary disconnections, distributed worker pools, managed
+tasks, and channels inside messages are especially useful.
 
 ## Related projects
 
