@@ -4,96 +4,129 @@
 
 ## Why NetChan
 
-Go already has a very convenient model for parallel work inside one computer: **goroutines connected by channels**.
+Go already has a convenient model for parallel work inside one computer: **split a large job into independent sequential tasks, run those tasks as goroutines, and connect them with channels**.
 
-A goroutine can execute an ordinary sequential piece of code, while `chan` carries work and results between goroutines and synchronizes them. `select` lets a worker wait for work, cancellation, or another event using ordinary Go syntax.
-
-This makes a common pattern simple:
-
-```text
-one large sequential problem
-          |
-          v
-split into independent sequential tasks
-          |
-          +--> goroutine A -> CPU Core 1
-          +--> goroutine B -> CPU Core 2
-          +--> goroutine C -> CPU Core 3
-          +--> goroutine D -> CPU Core 4
-```
-
-The individual tasks remain sequential. The speedup comes from executing several independent tasks at the same time on different CPU cores.
-
-For example, a worker may still contain nothing more complicated than:
+Start with an ordinary sequential computation:
 
 ```go
-for i := start; i < end; i++ {
+for i := 0; i < 1_000_000; i++ {
     check(i)
 }
 ```
 
-The Go runtime schedules runnable goroutines and can execute independent ones in parallel on the cores available in that machine.
+This is still one sequential task. Go will not automatically split this loop across CPU cores.
 
-A native Go `chan`, however, belongs to one Go runtime. It does not directly connect a goroutine on one computer with a goroutine on another.
+To use several cores, the application first decomposes the work into independent pieces and starts those pieces as separate goroutines. Channels are then used to coordinate them:
+
+```go
+func processRange(start, end int, done chan<- struct{}) {
+    for i := start; i < end; i++ {
+        check(i)
+    }
+
+    done <- struct{}{}
+}
+
+func processAll() {
+    done := make(chan struct{})
+
+    go processRange(0,       250_000, done)
+    go processRange(250_000, 500_000, done)
+    go processRange(500_000, 750_000, done)
+    go processRange(750_000, 1_000_000, done)
+
+    for i := 0; i < 4; i++ {
+        <-done
+    }
+}
+```
+
+Now there are four independent sequential tasks. The Go runtime can schedule those goroutines concurrently and, when several CPU cores are available, execute them in parallel.
+
+```text
+Task A -> go processRange(...) -> CPU Core 1
+Task B -> go processRange(...) -> CPU Core 2
+Task C -> go processRange(...) -> CPU Core 3
+Task D -> go processRange(...) -> CPU Core 4
+```
+
+The roles are simple:
+
+```text
+goroutines -> independently schedulable pieces of work
+channels   -> communication and synchronization between them
+select     -> wait for several possible channel events
+Go runtime -> schedules runnable goroutines on available CPU cores
+```
+
+So a channel does not make one sequential loop parallel by itself. The application decomposes the job into tasks; goroutines execute those tasks; channels connect and coordinate them.
+
+That works very well inside one Go runtime, but a native Go `chan` does not directly cross from one computer to another.
 
 **NetChan extends this channel model across the network.**
 
-Instead of being limited to the CPU cores of one machine, the same task-oriented design can use workers running on other computers and therefore their CPU cores as well:
+The goroutine itself does not move to another machine. Instead, the same task/channel worker model continues in another process, and NetChan carries values and directional channel capabilities across the network boundary.
+
+The important change is simply where a task may be executed:
 
 ```text
 ordinary Go
 
-Machine A / Core 1 -> Task A
-Machine A / Core 2 -> Task B
-Machine A / Core 3 -> Task C
-Machine A / Core 4 -> Task D
+Task A -> Machine A / Core 1
+Task B -> Machine A / Core 2
+Task C -> Machine A / Core 3
+Task D -> Machine A / Core 4
 
 
 NetChan
 
-Machine A / Core 1 -> Task A
-Machine A / Core 2 -> Task B
-Machine B / Core 1 -> Task C
-Machine B / Core 2 -> Task D
-Machine C / Core 1 -> Task E
-Machine D / Core 8 -> Task F
+Task A -> Machine A / Core 1
+Task B -> Machine A / Core 2
+Task C -> Machine B / Core 1
+Task D -> Machine B / Core 2
+Task E -> Machine C / Core 1
+Task F -> Machine D / Core 8
 ```
 
 In short:
 
 ```text
-Go channels:
-parallelize independent sequential tasks
-across cores of one computer
+Go:
+decompose a large job into independent sequential tasks,
+run them as goroutines,
+coordinate them with channels,
+and execute them in parallel on cores of one computer
 
 NetChan:
-extend the same channel-oriented model
-across multiple computers and their cores
+extend the same task/channel model across the network,
+so tasks can also be executed by workers on other computers and their CPU cores
 ```
 
-NetChan does not make one sequential operation itself faster. It makes it possible to scale a decomposable workload beyond one machine while keeping the programming model close to ordinary Go: goroutines, channels, `select`, and `close`.
+NetChan does not make one sequential operation itself faster. It lets the same decomposition-and-channel model scale beyond one machine while keeping the programming style close to ordinary Go: goroutines, channels, `select`, and `close`.
 
 ---
 
 ## Shared task channel
 
-A simple distributed worker pool uses a shared task channel. Free workers block waiting for work; when a task arrives, one worker receives it, executes its ordinary sequential code, and then waits for the next task.
+A simple distributed worker pool uses a shared task channel. Tasks are published into the pool, and free workers block waiting for the next one.
 
 ```text
-                     +----------+
-                  +->| Worker 1 |
-                  |  +----------+
-                  |
-+-----------+     |  +----------+
-| Scheduler |-----+->| Worker 2 |
-+-----------+     |  +----------+
-                  |
-                  |  +----------+
-                  +->| Worker 3 |
-                     +----------+
+Task A --\
+Task B ---+--> shared task channel --> Worker 1
+Task C ---+                         --> Worker 2
+Task D --/                          --> Worker 3
 ```
 
-A worker may be another goroutine on the same machine or the same worker program running on another computer. The application-level model stays the same.
+Once a worker receives a task, it executes that task's ordinary sequential code and then returns to the channel for more work.
+
+A worker may be another goroutine on the same machine or the same worker program running on another computer. From the task's point of view, only the execution location changes:
+
+```text
+Task A -> local worker  -> Machine A / Core 1
+Task B -> local worker  -> Machine A / Core 2
+Task C -> remote worker -> Machine B / Core 1
+Task D -> remote worker -> Machine C / Core 3
+```
 
 ---
 
@@ -247,11 +280,11 @@ Task 4:   3,000,000 - 3,999,999
 and workers consume them as they become free:
 
 ```text
-Machine A / Core 1 -> Task 1
-Machine A / Core 2 -> Task 2
-Machine B / Core 1 -> Task 3
-Machine B / Core 2 -> Task 4
-Machine C / Core 1 -> Task 5
+Task 1 -> Machine A / Core 1
+Task 2 -> Machine A / Core 2
+Task 3 -> Machine B / Core 1
+Task 4 -> Machine B / Core 2
+Task 5 -> Machine C / Core 1
 ```
 
 Each task remains ordinary sequential code. Fast workers naturally complete more tasks; slow workers complete fewer.
@@ -314,20 +347,25 @@ one sequential computation
         v
 decompose into independent tasks
         |
-        v
-Go goroutines + chan
-        |
-        v
-parallel execution on cores of one machine
-        |
-        v
-NetChan
-        |
-        v
-workers on other machines and their cores
-        |
-        v
-distributed worker pool
+        +--> Task A
+        +--> Task B
+        +--> Task C
+        +--> Task D
+                |
+                v
+        Go goroutines + chan
+                |
+                v
+      cores of one machine
+                |
+                v
+             NetChan
+                |
+                v
+   other machines and their cores
+                |
+                v
+     distributed worker pool
 ```
 
 And each task is either:
