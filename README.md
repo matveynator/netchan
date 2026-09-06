@@ -4,6 +4,86 @@
 
 ## Why NetChan
 
+Go already has a simple model for organizing independent work inside one program: **goroutines connected by channels**.
+
+A goroutine can execute an ordinary sequential piece of code, while a Go `chan` acts as the communication and synchronization link between goroutines. `select` lets a goroutine wait for work, results, cancellation, or other events without building a separate polling system.
+
+This makes a very useful pattern possible:
+
+```text
+one large sequential problem
+          |
+          v
+split into independent sequential tasks
+          |
+          +--> goroutine A
+          +--> goroutine B
+          +--> goroutine C
+          +--> goroutine D
+```
+
+Each task can remain simple sequential code. The Go runtime schedules runnable goroutines and can execute independent ones in parallel on different CPU cores of the same computer.
+
+```text
+ONE COMPUTER
+
+Go chan / goroutines / select
+            |
+            +--> CPU Core 1 -> sequential Task A
+            +--> CPU Core 2 -> sequential Task B
+            +--> CPU Core 3 -> sequential Task C
+            +--> CPU Core 4 -> sequential Task D
+```
+
+So the first level of scaling is already built into the ordinary Go programming model:
+
+```text
+one sequential job
+        |
+        v
+decompose it
+        |
+        v
+run independent pieces in parallel
+on several CPU cores of one machine
+```
+
+The limitation is physical: a native Go `chan` belongs to one Go runtime. It is designed to connect goroutines inside that runtime, not goroutines running on different computers.
+
+**NetChan is the network extension of this model.**
+
+It keeps the familiar channel-oriented programming style, but allows values and directional channel capabilities to cross the network boundary. A worker that used to be another goroutine on another core can now also be a worker running on another machine.
+
+```text
+ordinary Go chan
+
+Machine A
+Core 1 <---- channels ----> Core 2
+Core 3 <---- channels ----> Core 4
+
+
+NetChan
+
+Machine A / Core 1 ---- network ----> Machine B / Core 1
+Machine A / Core 2 ---- network ----> Machine C / Core 3
+Machine A / Core 3 ---- network ----> Machine D / Core 8
+```
+
+In other words, the same basic idea grows naturally:
+
+```text
+Go:
+parallel execution of independent sequential tasks
+across CPU cores of one computer
+
+NetChan:
+the same task/channel model,
+but workers and CPU cores on other computers
+can join the same computation
+```
+
+NetChan does not make one sequential operation itself faster. It lets a decomposable workload scale beyond the cores available in one machine while keeping the programming model close to ordinary Go channels, goroutines, `select`, and `close`.
+
 A common way to make a large computation finish sooner is to split it into smaller independent **sequential tasks**.
 
 For example, instead of processing one huge range from beginning to end:
