@@ -4,11 +4,11 @@
 
 ## Why NetChan
 
-Go already has a simple model for organizing independent work inside one program: **goroutines connected by channels**.
+Go already has a very convenient model for parallel work inside one computer: **goroutines connected by channels**.
 
-A goroutine can execute an ordinary sequential piece of code, while a Go `chan` acts as the communication and synchronization link between goroutines. `select` lets a goroutine wait for work, results, cancellation, or other events without building a separate polling system.
+A goroutine can execute an ordinary sequential piece of code, while `chan` carries work and results between goroutines and synchronizes them. `select` lets a worker wait for work, cancellation, or another event using ordinary Go syntax.
 
-This makes a very useful pattern possible:
+This makes a common pattern simple:
 
 ```text
 one large sequential problem
@@ -16,94 +16,15 @@ one large sequential problem
           v
 split into independent sequential tasks
           |
-          +--> goroutine A
-          +--> goroutine B
-          +--> goroutine C
-          +--> goroutine D
+          +--> goroutine A -> CPU Core 1
+          +--> goroutine B -> CPU Core 2
+          +--> goroutine C -> CPU Core 3
+          +--> goroutine D -> CPU Core 4
 ```
 
-Each task can remain simple sequential code. The Go runtime schedules runnable goroutines and can execute independent ones in parallel on different CPU cores of the same computer.
+The individual tasks remain sequential. The speedup comes from executing several independent tasks at the same time on different CPU cores.
 
-```text
-ONE COMPUTER
-
-Go chan / goroutines / select
-            |
-            +--> CPU Core 1 -> sequential Task A
-            +--> CPU Core 2 -> sequential Task B
-            +--> CPU Core 3 -> sequential Task C
-            +--> CPU Core 4 -> sequential Task D
-```
-
-So the first level of scaling is already built into the ordinary Go programming model:
-
-```text
-one sequential job
-        |
-        v
-decompose it
-        |
-        v
-run independent pieces in parallel
-on several CPU cores of one machine
-```
-
-The limitation is physical: a native Go `chan` belongs to one Go runtime. It is designed to connect goroutines inside that runtime, not goroutines running on different computers.
-
-**NetChan is the network extension of this model.**
-
-It keeps the familiar channel-oriented programming style, but allows values and directional channel capabilities to cross the network boundary. A worker that used to be another goroutine on another core can now also be a worker running on another machine.
-
-```text
-ordinary Go chan
-
-Machine A
-Core 1 <---- channels ----> Core 2
-Core 3 <---- channels ----> Core 4
-
-
-NetChan
-
-Machine A / Core 1 ---- network ----> Machine B / Core 1
-Machine A / Core 2 ---- network ----> Machine C / Core 3
-Machine A / Core 3 ---- network ----> Machine D / Core 8
-```
-
-In other words, the same basic idea grows naturally:
-
-```text
-Go:
-parallel execution of independent sequential tasks
-across CPU cores of one computer
-
-NetChan:
-the same task/channel model,
-but workers and CPU cores on other computers
-can join the same computation
-```
-
-NetChan does not make one sequential operation itself faster. It lets a decomposable workload scale beyond the cores available in one machine while keeping the programming model close to ordinary Go channels, goroutines, `select`, and `close`.
-
-A common way to make a large computation finish sooner is to split it into smaller independent **sequential tasks**.
-
-For example, instead of processing one huge range from beginning to end:
-
-```text
-one large task
-0 ------------------------------------------------------ 1,000,000
-```
-
-we can split it into smaller pieces:
-
-```text
-Task 1:   0 - 99,999
-Task 2:   100,000 - 199,999
-Task 3:   200,000 - 299,999
-Task 4:   300,000 - 399,999
-...
-```
-
-Each piece is still ordinary sequential code:
+For example, a worker may still contain nothing more complicated than:
 
 ```go
 for i := start; i < end; i++ {
@@ -111,124 +32,52 @@ for i := start; i < end; i++ {
 }
 ```
 
-The important property is that the pieces are independent. Because they do not depend on each other, they can run at the same time.
+The Go runtime schedules runnable goroutines and can execute independent ones in parallel on the cores available in that machine.
 
-### First: scale across CPU cores inside one computer
+A native Go `chan`, however, belongs to one Go runtime. It does not directly connect a goroutine on one computer with a goroutine on another.
 
-The first level of parallelism is local.
+**NetChan extends this channel model across the network.**
 
-If one computer has several CPU cores, different sequential tasks can run on different cores:
+Instead of being limited to the CPU cores of one machine, the same task-oriented design can use workers running on other computers and therefore their CPU cores as well:
 
 ```text
-ONE COMPUTER
+ordinary Go
 
-CPU Core 1 -> Task A
-CPU Core 2 -> Task B
-CPU Core 3 -> Task C
-CPU Core 4 -> Task D
+Machine A / Core 1 -> Task A
+Machine A / Core 2 -> Task B
+Machine A / Core 3 -> Task C
+Machine A / Core 4 -> Task D
+
+
+NetChan
+
+Machine A / Core 1 -> Task A
+Machine A / Core 2 -> Task B
+Machine B / Core 1 -> Task C
+Machine B / Core 2 -> Task D
+Machine C / Core 1 -> Task E
+Machine D / Core 8 -> Task F
 ```
 
-Instead of one core doing this:
+In short:
 
 ```text
-Task A -> Task B -> Task C -> Task D
-```
-
-several cores can do this:
-
-```text
-Task A -------->
-Task B -------->
-Task C -------->
-Task D -------->
-```
-
-This is already useful parallelism: the individual tasks remain sequential, but several independent sequential tasks execute at the same time.
-
-Go is especially convenient for this model because goroutines, channels, and `select` make it natural to organize many independent workers.
-
-But local parallelism has a physical limit: one computer has only so many CPU cores.
-
-### Then: scale across several computers
-
-When all useful cores of one machine are busy, the next step is to add cores from other machines.
-
-```text
-Machine A
-
-Core 1 -> Task A
-Core 2 -> Task B
-Core 3 -> Task C
-Core 4 -> Task D
-
-
-Machine B
-
-Core 1 -> Task E
-Core 2 -> Task F
-Core 3 -> Task G
-Core 4 -> Task H
-
-
-Machine C
-
-Core 1 -> Task I
-Core 2 -> Task J
-Core 3 -> Task K
-Core 4 -> Task L
-```
-
-Now the computation is no longer limited to the cores of one computer.
-
-The machines may be in the same rack, another datacenter, another city, or another continent. Each machine can run the same worker logic and execute ordinary sequential tasks.
-
-Conceptually:
-
-```text
-large problem
-     |
-     v
-split into independent sequential tasks
-     |
-     +--> CPU core on Machine A
-     |
-     +--> CPU core on Machine A
-     |
-     +--> CPU core on Machine B
-     |
-     +--> CPU core on Machine C
-     |
-     +--> CPU core on Machine D
-```
-
-This is what NetChan is for.
-
-A native Go channel belongs to one Go runtime. It cannot directly connect a goroutine on Machine A with a goroutine on Machine B.
-
-**NetChan extends the same channel-oriented model across the network, so workers on other computers can join the same computation.**
-
-In simple terms:
-
-```text
-Go:
-independent sequential tasks
-running in parallel on CPU cores of one machine
+Go channels:
+parallelize independent sequential tasks
+across cores of one computer
 
 NetChan:
-the same model,
-but CPU cores from other machines
-can join the worker pool
+extend the same channel-oriented model
+across multiple computers and their cores
 ```
 
-NetChan does not make one CPU instruction magically faster. It expands the pool of execution resources available to the same task-oriented design.
+NetChan does not make one sequential operation itself faster. It makes it possible to scale a decomposable workload beyond one machine while keeping the programming model close to ordinary Go: goroutines, channels, `select`, and `close`.
 
 ---
 
 ## Shared task channel
 
-A simple distributed architecture uses one shared task channel.
-
-Workers wait for work:
+A simple distributed worker pool uses a shared task channel. Free workers block waiting for work; when a task arrives, one worker receives it, executes its ordinary sequential code, and then waits for the next task.
 
 ```text
                      +----------+
@@ -244,56 +93,22 @@ Workers wait for work:
                      +----------+
 ```
 
-A worker may be:
-
-- a goroutine using another local CPU core;
-- the same worker program on another machine;
-- a server in another datacenter;
-- a machine on another continent.
-
-When there is no work, the worker simply blocks on the task channel.
-
-```text
-wait for task
-     |
-     | no task
-     +-------------------- blocked
-     |
-     | task arrives
-     v
-receive task
-     |
-     v
-execute sequential work
-     |
-     v
-finish
-     |
-     v
-wait for next task
-```
-
-The same mental model works locally and across the network.
+A worker may be another goroutine on the same machine or the same worker program running on another computer. The application-level model stays the same.
 
 ---
 
-# Two task modes
+## Two task modes
 
-NetChan tasks have two simple modes:
+A task can be used in one of two ways:
 
 ```text
 1. Fire-and-Forget
-
 2. Managed Task
 ```
 
-The difference is whether the sender needs any communication with the task after it has been dispatched.
+### 1. Fire-and-Forget
 
----
-
-## 1. Fire-and-Forget
-
-The simplest task contains only the work itself.
+If the sender does not need a result or further control, the task contains only the work:
 
 ```go
 type Task struct {
@@ -301,62 +116,15 @@ type Task struct {
 }
 ```
 
-The sender publishes it:
-
 ```text
-Task Owner --------------------> Worker
-                 Work
+Task Owner ---- Work ----> Worker
 ```
 
-and forgets about it.
+The task is sent, executed, and forgotten. No task-local communication channels are created.
 
-The worker receives the task, performs the sequential work, and finishes.
+### 2. Managed Task
 
-```text
-send task
-    |
-    v
-worker receives task
-    |
-    v
-execute
-    |
-    v
-finish
-```
-
-No task-local communication channels are created.
-
-This mode is appropriate when the sender does not need:
-
-- a result;
-- cancellation;
-- progress information;
-- additional instructions;
-- clarification during execution.
-
-The model is simply:
-
-```text
-send -> execute -> forget
-```
-
----
-
-## 2. Managed Task
-
-If the sender needs a result **or** wants to control the task while it is running, the task is managed.
-
-A managed task always creates **two task-scoped directional channels**:
-
-```text
-Request
-Reply
-```
-
-Never only one.
-
-Conceptually:
+If the sender needs a result or wants to control the task while it is running, the task carries a fresh pair of task-scoped directional channels:
 
 ```go
 type ManagedTask struct {
@@ -366,55 +134,32 @@ type ManagedTask struct {
 }
 ```
 
-The directions are always named from the point of view of the **task owner**, the side that created and dispatched the task:
+Their names are always from the point of view of the **task owner**, the side that creates and dispatches the task:
 
 ```text
 Task Owner                         Worker
 
           Work --------------------->
-
           Request ------------------->
-
           <---------------------- Reply
 ```
 
-`Request` flows from the task owner to the worker.
+`Request` is owner -> worker. It can carry cancellation, parameter changes, clarification, progress requests, or other control messages.
 
-`Reply` flows from the worker back to the task owner.
+`Reply` is worker -> owner. It can carry the final result, progress, status, partial results, or errors.
 
-Each channel is simplex. Together they create a temporary duplex session for exactly one task.
+Each channel is simplex; together they form a temporary duplex session for exactly one task.
 
----
-
-## Request: owner -> worker
-
-The `Request` channel is the control path from the task owner to the worker.
-
-It can be used for things such as:
-
-```text
-Stop
-Cancel
-ChangePriority
-UpdateParameters
-ChangeRange
-RequestProgress
-ClarifyWork
-```
-
-A worker can observe it naturally with `select` while continuing its sequential computation:
+A worker can combine ordinary sequential computation with control using normal Go `select`:
 
 ```go
 for candidate := start; candidate < end; candidate++ {
     select {
     case request, open := <-task.Request:
         if !open {
-            // The task owner ended this managed task.
             return
         }
-
         handleRequest(request)
-
     default:
     }
 
@@ -422,195 +167,35 @@ for candidate := start; candidate < end; candidate++ {
 }
 ```
 
-If cancellation is all that is needed, the owner can close the request side.
+If cancellation is all that is needed, closing the request side is enough. A receive from a closed channel becomes immediately selectable, so the worker can stop and return to the pool.
 
-The worker observes the closed receive channel and stops:
-
-```text
-Task Owner
-    |
-    | close Request
-    v
- Worker
-    |
-    v
-stop current computation
-    |
-    v
-discard unfinished work
-    |
-    v
-return to worker pool
-```
-
-This follows ordinary Go semantics: a receive from a closed channel is immediately selectable.
-
----
-
-## Reply: worker -> owner
-
-The `Reply` channel is the return path.
-
-The worker can use it for:
+The model is deliberately binary:
 
 ```text
-Result
-Progress
-Status
-PartialResult
-Error
+Fire-and-Forget:
+    Work
+
+Managed Task:
+    Work + Request + Reply
 ```
 
-The simplest case is a final result:
+There is no managed form with only one of the two channels.
 
-```go
-task.Reply <- Reply{
-    Result: result,
-}
-```
-
-Conceptually:
-
-```text
-Worker
-   |
-   | result
-   v
- Reply
-   |
-   v
-Task Owner
-```
-
-The important distinction is that `Reply` is for returning information, not for discovering whether the task is still wanted.
-
-A sender cannot safely do this with a send-only Go channel:
-
-```text
-check whether Reply is open
-        |
-        v
-send to Reply
-```
-
-because another goroutine may close the channel between the check and the send.
-
-That is why a managed task has the opposite-direction `Request` channel as well.
-
-`Request` carries task lifetime and control. `Reply` carries information back.
-
----
-
-## Zero channels or two channels
-
-The task model is deliberately binary.
-
-```text
-FIRE-AND-FORGET
-
-Work
-```
-
-or:
-
-```text
-MANAGED TASK
-
-Work
-+ Request
-+ Reply
-```
-
-There is no managed form with only `Request`, and there is no managed form with only `Reply`.
-
-If communication is required, both directions exist.
-
-This keeps the lifecycle predictable and avoids making one channel perform two conflicting jobs.
-
----
-
-## Request and Reply are task-scoped
-
-The `Request` / `Reply` pair belongs only to the task that created it.
-
-The pair is temporary and is never reused for the next task.
+`Request` and `Reply` are also **task-scoped**. A managed task gets a new pair when it is created, and that pair ends with the task. The next task gets different channels:
 
 ```text
 Task A
- |
- +-- Work A
- +-- Request A
- +-- Reply A
+ ├── Request A
+ └── Reply A
 
-Task A finishes
- |
- +-- Request A ends
- +-- Reply A ends
-
+Task A ends
 
 Task B
- |
- +-- Work B
- +-- Request B
- +-- Reply B
+ ├── Request B
+ └── Reply B
 ```
 
-Task B gets a completely new pair.
-
-The lifetime is therefore:
-
-```text
-Task created
-    |
-    +--> Request created
-    +--> Reply created
-    |
-    v
-Task executes
-    |
-    v
-Task completes or is cancelled
-    |
-    +--> Request ends
-    +--> Reply ends
-```
-
-The same `Request` and `Reply` channels are never recycled for another logical task.
-
-This makes them **task-scoped capabilities**: they exist exactly for the lifetime of one managed task.
-
----
-
-## Why this is useful
-
-The shared task channel distributes work.
-
-The task-local `Request` / `Reply` pair manages one particular piece of work after a worker has taken it.
-
-```text
-shared task channel
-       |
-       v
-+------------------------+
-| Managed Task           |
-|                        |
-| Work                   |
-| Request -------------->+------> Worker control
-| Reply   <--------------+<------ Worker result
-+------------------------+
-```
-
-So there are two levels:
-
-```text
-Shared channel
-    =
-where workers obtain tasks
-
-Task-scoped Request / Reply
-    =
-communication for one running task
-```
+The same pair is never reused for another logical task.
 
 ---
 
@@ -618,14 +203,7 @@ communication for one running task
 
 A scheduler does not have to assign exactly one worker to every logical task.
 
-Suppose there are:
-
-```text
-10 logical tasks
-100 available workers
-```
-
-The scheduler may let several workers compete on the same important logical task.
+If there are many idle workers, several of them may execute copies of the same important managed task:
 
 ```text
 Task A -> Worker 01
@@ -633,8 +211,6 @@ Task A -> Worker 02
 Task A -> Worker 03
 ...
 ```
-
-All copies belong to the same managed task session and may share its task-scoped control/result capabilities.
 
 ```text
 Worker 01 -------\
@@ -644,26 +220,7 @@ Worker 04 --------/
 Worker 05 -------/
 ```
 
-When the first acceptable result arrives through `Reply`, the task owner can terminate the remaining work through `Request`.
-
-For cancellation, closing `Request` is enough:
-
-```text
-first valid result
-       |
-       v
-Task Owner closes Request
-       |
-       +-------> Worker 01 stops
-       |
-       +-------> Worker 02 stops
-       |
-       +-------> Worker 04 stops
-       |
-       +-------> Worker 05 stops
-```
-
-The losing workers abandon obsolete work and return to the common pool.
+When the first acceptable result arrives through `Reply`, the task owner can stop the remaining copies through `Request`. The losing workers return to the common pool and can immediately take other work.
 
 This is a simple form of distributed speculative execution.
 
@@ -671,15 +228,13 @@ This is a simple form of distributed speculative execution.
 
 ## Decomposition instead of competition
 
-Competition is only one strategy.
-
-Often the better strategy is to make many smaller independent tasks.
+Competition is only one scheduling strategy. Often the better approach is to split a large search or computation into many smaller independent tasks:
 
 ```text
 0 ------------------------------------------------------ 100,000,000
 ```
 
-can become:
+becomes:
 
 ```text
 Task 1:   0 - 999,999
@@ -689,7 +244,7 @@ Task 4:   3,000,000 - 3,999,999
 ...
 ```
 
-and then:
+and workers consume them as they become free:
 
 ```text
 Machine A / Core 1 -> Task 1
@@ -699,31 +254,15 @@ Machine B / Core 2 -> Task 4
 Machine C / Core 1 -> Task 5
 ```
 
-Each CPU core still executes ordinary sequential code.
-
-The speedup comes from running many independent sequential tasks at the same time.
-
-Fast machines naturally finish more tasks. Slow machines naturally finish fewer.
+Each task remains ordinary sequential code. Fast workers naturally complete more tasks; slow workers complete fewer.
 
 ---
 
 ## Heterogeneous workers
 
-A distributed worker pool does not need identical hardware.
+A distributed pool does not need identical hardware. It may contain old laptops, desktop CPUs, large servers, ARM machines, cloud VMs, GPUs, storage-heavy nodes, or specialized accelerators.
 
-It may contain:
-
-```text
-an old laptop
-a desktop CPU
-a 64-core server
-an ARM machine
-a cloud VM
-a GPU worker
-a storage-heavy machine
-```
-
-Workers can maintain performance statistics such as:
+Workers can keep application-level performance statistics such as:
 
 ```text
 operations / second
@@ -734,9 +273,7 @@ encoding speed
 rendering speed
 ```
 
-A scheduler can use those measurements as an application-level policy when deciding how large a task should be or where it should run.
-
-For example:
+A scheduler can use those measurements to decide where a task should run or how large a task should be:
 
 ```text
 Task target: < 500 ms
@@ -745,103 +282,60 @@ Worker A estimate: 8.2 s   -> unsuitable
 Worker B estimate: 190 ms  -> execute
 ```
 
-NetChan supplies the communication model; scheduling policy belongs to the application.
+NetChan provides the communication model; scheduling policy belongs to the application.
 
 ---
 
 ## Example workloads
 
-This model is useful whenever a large problem can be decomposed into independent work.
-
-Examples include:
+The model is useful whenever a larger problem can be decomposed into independent work, for example:
 
 - factoring and mining-style workloads;
 - large search spaces;
 - rendering;
 - video and media processing;
 - compression;
-- scientific simulations;
-- Monte Carlo workloads;
+- scientific simulations and Monte Carlo workloads;
 - crawling and indexing;
 - distributed builds;
 - testing and fuzzing;
 - batch data processing;
 - independent AI inference jobs.
 
-Workers do not have to represent only CPU cores. They may also represent GPUs, memory-heavy machines, storage nodes, network resources, accelerators, or external hardware.
+Workers may represent CPUs, GPUs, memory-heavy machines, storage nodes, network resources, accelerators, or external hardware.
 
 ---
 
 ## The idea in one picture
 
-First, scale inside one computer:
-
-```text
-ONE MACHINE
-
-Core 1 -> sequential task A
-Core 2 -> sequential task B
-Core 3 -> sequential task C
-Core 4 -> sequential task D
-```
-
-Then NetChan lets the same model grow beyond that machine:
-
-```text
-Machine A / Core 1 -> sequential task A
-Machine A / Core 2 -> sequential task B
-
-Machine B / Core 1 -> sequential task C
-Machine B / Core 2 -> sequential task D
-
-Machine C / Core 1 -> sequential task E
-Machine C / Core 2 -> sequential task F
-
-Machine D / Core 1 -> sequential task G
-...
-```
-
-So the system grows naturally:
-
 ```text
 one sequential computation
         |
         v
-many independent sequential tasks
+decompose into independent tasks
         |
         v
-many CPU cores on one machine
+Go goroutines + chan
+        |
+        v
+parallel execution on cores of one machine
         |
         v
 NetChan
         |
         v
-CPU cores on many machines
+workers on other machines and their cores
         |
         v
 distributed worker pool
 ```
 
-And each distributed task uses one of two modes:
+And each task is either:
 
 ```text
-Fire-and-Forget
-    Work
-
-Managed Task
-    Work + Request + Reply
+Fire-and-Forget: Work
+Managed Task:    Work + Request + Reply
 ```
-
-The programming model remains close to ordinary Go:
-
-```text
-goroutines
-channels
-select
-close
-```
-
-The difference is that the workers may now live on completely different computers.
 
 ---
 
