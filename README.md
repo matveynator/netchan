@@ -1,4 +1,4 @@
-# “Quantum” Network Channels in Go — Protocol v2
+# Network Channels in Go — Protocol v2
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan/v2.svg)](https://pkg.go.dev/github.com/matveynator/netchan/v2)
 
