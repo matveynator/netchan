@@ -34,7 +34,6 @@ package netchan
 
 import (
 	"bufio"
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -49,6 +48,9 @@ import (
 	"os"
 	"reflect"
 	"time"
+
+	"github.com/matveynator/netchan/v2/pkg/transport"
+	"github.com/matveynator/netchan/v2/pkg/transport/nearby"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,18 +59,6 @@ import (
 
 const (
 	protocolVersion             = 2
-	maximumPendingFrames        = 1024
-	channelFrameBufferSize      = maximumPendingFrames + 32
-	maximumValueCapabilities    = 16
-	maximumSessionCapabilities  = 256
-	maximumSessionQueuedBytes   = 64 << 20
-	maximumSessionPreparedBytes = 64 << 20
-	maximumSessionDecodedBytes  = 64 << 20
-	maximumCapabilityBytes      = 64 << 20
-	maximumCapabilityRouteBytes = 64 << 20
-	maximumNodeSessions         = 1024
-	maximumConcurrentHandshakes = 64
-	maximumConcurrentEncodings  = 4
 	maximumCapabilityTombstones = maximumSessionCapabilities
 	defaultReconnectDelay       = 250 * time.Millisecond
 	maximumReconnectDelay       = 5 * time.Second
@@ -164,7 +154,30 @@ type physicalWriteCommand struct {
 type physicalConnectionEvent struct {
 	connection *physicalConnection
 	frame      networkFrame
+	activity   bool
 	err        error
+}
+
+type physicalDeadlineCommand struct {
+	deadline time.Time
+	active   bool
+	reply    chan error
+}
+
+type progressReader struct {
+	reader   io.Reader
+	activity chan<- struct{}
+}
+
+func (reader progressReader) Read(destination []byte) (int, error) {
+	count, err := reader.reader.Read(destination)
+	if count > 0 {
+		select {
+		case reader.activity <- struct{}{}:
+		default:
+		}
+	}
+	return count, err
 }
 
 func runPhysicalConnection(connection net.Conn, events chan<- physicalConnectionEvent, sessionDone, ownerDone <-chan struct{}) *physicalConnection {
@@ -174,6 +187,8 @@ func runPhysicalConnection(connection net.Conn, events chan<- physicalConnection
 		done:       make(chan struct{}),
 	}
 	failures := make(chan error, 2)
+	activity := make(chan struct{}, 1)
+	deadlines := make(chan physicalDeadlineCommand)
 
 	reportFailure := func(err error) {
 		select {
@@ -211,12 +226,15 @@ func runPhysicalConnection(connection net.Conn, events chan<- physicalConnection
 	}()
 
 	go func() {
-		decoder := newFrameDecoder(connection)
+		decoder := newFrameDecoder(progressReader{reader: connection, activity: activity})
 		for {
 			frame, err := decoder.decode()
 			if err != nil {
 				reportFailure(err)
 				return
+			}
+			if frame.Kind == frameSessionClosed {
+				transport.PeerFinished(connection)
 			}
 			select {
 			case events <- physicalConnectionEvent{connection: physical, frame: frame}:
@@ -237,11 +255,21 @@ func runPhysicalConnection(connection net.Conn, events chan<- physicalConnection
 			case <-physical.done:
 				return
 			}
-			deadline := command.deadline
-			if deadline.IsZero() {
-				deadline = time.Now().Add(15 * time.Second)
+			setDeadline := func(active bool) error {
+				reply := make(chan error, 1)
+				select {
+				case deadlines <- physicalDeadlineCommand{deadline: command.deadline, active: active, reply: reply}:
+				case <-physical.done:
+					return net.ErrClosed
+				}
+				select {
+				case err := <-reply:
+					return err
+				case <-physical.done:
+					return net.ErrClosed
+				}
 			}
-			if err := connection.SetWriteDeadline(deadline); err != nil {
+			if err := setDeadline(true); err != nil {
 				if command.written != nil {
 					command.written <- err
 				}
@@ -255,12 +283,55 @@ func runPhysicalConnection(connection net.Conn, events chan<- physicalConnection
 				reportFailure(err)
 				return
 			}
+			if err := setDeadline(false); err != nil {
+				reportFailure(err)
+				return
+			}
 			if command.written != nil {
 				command.written <- nil
 			}
 		}
 	}()
 
+	// Progress renews a stall budget, while explicit shutdown deadlines stay
+	// absolute. A single owner serializes deadline changes from both directions.
+	go func() {
+		linkActivity := transport.ActivityChannel(connection)
+		var renewable, pending bool
+		for {
+			var updates chan<- physicalConnectionEvent
+			if pending {
+				updates = events
+			}
+			select {
+			case request := <-deadlines:
+				renewable = request.active && request.deadline.IsZero()
+				deadline := request.deadline
+				if renewable {
+					deadline = time.Now().Add(15 * time.Second)
+				}
+				request.reply <- connection.SetWriteDeadline(deadline)
+			case <-activity:
+				pending = true
+				if renewable {
+					_ = connection.SetWriteDeadline(time.Now().Add(15 * time.Second))
+				}
+			case _, open := <-linkActivity:
+				if !open {
+					linkActivity = nil
+					continue
+				}
+				pending = true
+				if renewable {
+					_ = connection.SetWriteDeadline(time.Now().Add(15 * time.Second))
+				}
+			case updates <- physicalConnectionEvent{connection: physical, activity: true}:
+				pending = false
+			case <-physical.done:
+				return
+			}
+		}
+	}()
 	return physical
 }
 
@@ -323,7 +394,10 @@ func flushSessionClose(physical *physicalConnection, queued []networkFrame, sess
 			return
 		}
 	}
-	_ = physical.sendAndWaitUntil(networkFrame{Version: protocolVersion, Kind: frameSessionClosed, SessionID: sessionID}, deadline)
+	if err := physical.sendAndWaitUntil(networkFrame{Version: protocolVersion, Kind: frameSessionClosed, SessionID: sessionID}, deadline); err != nil {
+		return
+	}
+	_ = transport.Drain(physical.connection, deadline)
 }
 
 var errSessionClosed = errors.New("netchan: session closed")
@@ -343,6 +417,11 @@ var (
 	ErrSessionExpired = errors.New("netchan: logical session expired")
 	// ErrSessionRejected reports that a peer cannot admit another logical session.
 	ErrSessionRejected = errors.New("netchan: logical session rejected")
+	// Transport errors describe a missing capability without excluding the target.
+	ErrUnsupportedTransport = transport.ErrUnsupported
+	ErrTransportUnavailable = transport.ErrUnavailable
+	ErrPeerNotFound         = transport.ErrPeerNotFound
+	ErrAmbiguousPeer        = transport.ErrAmbiguousPeer
 )
 
 func validateHandshake(frame networkFrame, expectedKind frameKind) error {
@@ -370,8 +449,6 @@ func validateHandshake(frame networkFrame, expectedKind frameKind) error {
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	maximumWireFrameSize      = 16 << 20
-	maximumChannelPayloadSize = maximumWireFrameSize - 1024
 	maximumHandshakeFrameSize = 1024
 )
 
@@ -748,6 +825,50 @@ const rootChannelName = "netchan.root"
 type Config struct {
 	Capacity int
 	TLS      *tls.Config
+	// Transports supplies instance-owned board or application drivers. A supplied
+	// scheme overrides its built-in driver without modifying a global registry.
+	Transports []transport.Driver
+	// ChannelTypes supplies static channel operations on runtimes without
+	// dynamic channel reflection. The same bindings work with the Go compiler.
+	ChannelTypes []ChannelType
+	// Security supplies verified stream TLS when the target only supports TLS offload.
+	Security transport.Security
+}
+
+// ChannelType binds an element type to ordinary, statically compiled Go channel
+// operations. Bindings are immutable and belong to a Config and its sessions.
+type ChannelType struct {
+	element      reflect.Type
+	makeChannel  func(int) reflect.Value
+	directional  func(reflect.Value, reflect.ChanDir) reflect.Value
+	selectCases  func(reflect.Value, []reflect.SelectCase) (int, reflect.Value, bool, error)
+	closeChannel func(reflect.Value)
+}
+
+// ChannelElement provides the operations TinyGo cannot synthesize through
+// reflect.ChanOf or reflect.Select. Supply one binding per nested element type.
+func ChannelElement[T any]() ChannelType {
+	return ChannelType{
+		element:     reflect.TypeOf((*T)(nil)).Elem(),
+		makeChannel: func(capacity int) reflect.Value { return reflect.ValueOf(make(chan T, capacity)) },
+		directional: func(channel reflect.Value, direction reflect.ChanDir) reflect.Value {
+			bidirectional := channel.Interface().(chan T)
+			if direction == reflect.SendDir {
+				return reflect.ValueOf((chan<- T)(bidirectional))
+			}
+			return reflect.ValueOf((<-chan T)(bidirectional))
+		},
+		selectCases: selectTypedChannelCases[T],
+		closeChannel: func(channel reflect.Value) {
+			defer func() { _ = recover() }()
+			switch typed := channel.Interface().(type) {
+			case chan T:
+				close(typed)
+			case chan<- T:
+				close(typed)
+			}
+		},
+	}
 }
 
 type deliveryRequest[T any] struct {
@@ -875,7 +996,7 @@ func Listen[T any](address string, configurations ...Config) (*Listener[T], erro
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(serverTLS, unusedTLSConfiguration()))
+	node, err := newNode(withTLSConfigs(serverTLS, unusedTLSConfiguration()), withTransportDrivers(configuration.Transports), withChannelTypes(configuration.ChannelTypes), withSecurity(configuration.Security))
 	if err != nil {
 		return nil, err
 	}
@@ -914,7 +1035,7 @@ func Dial[T any](address string, configurations ...Config) (*Channel[T], error) 
 	if err != nil {
 		return nil, err
 	}
-	node, err := newNode(withTLSConfigs(unusedTLSConfiguration(), clientTLS))
+	node, err := newNode(withTLSConfigs(unusedTLSConfiguration(), clientTLS), withTransportDrivers(configuration.Transports), withChannelTypes(configuration.ChannelTypes), withSecurity(configuration.Security))
 	if err != nil {
 		return nil, err
 	}
@@ -993,8 +1114,29 @@ func forwardListenerLifecycle[T any](node *node, accepted chan *Channel[T], repo
 type nodeOption func(*nodeConfiguration) error
 
 type nodeConfiguration struct {
-	serverTLS *tls.Config
-	clientTLS *tls.Config
+	serverTLS    *tls.Config
+	clientTLS    *tls.Config
+	drivers      []transport.Driver
+	channelTypes []ChannelType
+	security     transport.Security
+}
+
+func withSecurity(security transport.Security) nodeOption {
+	return func(configuration *nodeConfiguration) error { configuration.security = security; return nil }
+}
+
+func withChannelTypes(bindings []ChannelType) nodeOption {
+	return func(configuration *nodeConfiguration) error {
+		configuration.channelTypes = append([]ChannelType(nil), bindings...)
+		return nil
+	}
+}
+
+func withTransportDrivers(drivers []transport.Driver) nodeOption {
+	return func(configuration *nodeConfiguration) error {
+		configuration.drivers = append([]transport.Driver(nil), drivers...)
+		return nil
+	}
 }
 
 func withTLSConfigs(server, client *tls.Config) nodeOption {
@@ -1062,7 +1204,7 @@ type sessionUnhandledResult struct {
 	err      error
 }
 
-// networkListener owns one TCP/TLS accept loop.
+// networkListener owns one authenticated transport accept loop.
 type networkListener struct {
 	listener net.Listener
 	done     chan struct{}
@@ -1104,6 +1246,7 @@ func newNode(options ...nodeOption) (*node, error) {
 		handshakeSlots: make(chan struct{}, maximumConcurrentHandshakes),
 		reconnectSlots: make(chan struct{}, maximumNodeSessions),
 	}
+	node.configuration.drivers = append(node.configuration.drivers, defaultTransportDrivers(node.stopping)...)
 	go node.run()
 	return node, nil
 }
@@ -1120,7 +1263,15 @@ func (node *node) Done() <-chan struct{} {
 
 // Listen starts accepting TLS connections on address.
 func (node *node) listen(address string) (*networkListener, error) {
-	socket, err := tls.Listen("tcp", address, node.configuration.serverTLS.Clone())
+	endpoint, err := transport.Parse(address)
+	if err != nil {
+		return nil, err
+	}
+	driver, err := node.transportDriver(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	socket, err := driver.Listen(endpoint, transport.Options{TLS: node.configuration.serverTLS.Clone(), Done: node.stopping, OwnerDone: node.stopping, Security: node.configuration.security})
 	if err != nil {
 		return nil, err
 	}
@@ -1143,13 +1294,25 @@ func (node *node) listen(address string) (*networkListener, error) {
 	return listener, nil
 }
 
+func (node *node) transportDriver(endpoint transport.Endpoint) (transport.Driver, error) {
+	if endpoint.Scheme == "nearby" {
+		return nearby.Driver{Drivers: node.configuration.drivers, Report: node.publishError}, nil
+	}
+	for _, driver := range node.configuration.drivers {
+		if driver != nil && driver.Scheme() == endpoint.Scheme {
+			return driver, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %s", ErrUnsupportedTransport, endpoint.Scheme)
+}
+
 // Connect establishes a logical session and automatically reconnects it after failures.
 func (node *node) Connect(address string) (*session, error) {
 	identifier, err := randomIdentifier()
 	if err != nil {
 		return nil, err
 	}
-	session := newSession(identifier, node.unhandled, disconnectedLease, node.stopping, 0)
+	session := newSession(identifier, node.unhandled, disconnectedLease, node.stopping, 0, node.configuration.channelTypes...)
 	if err := node.registerSession(session); err != nil {
 		_ = session.Close()
 		return nil, err
@@ -1159,6 +1322,9 @@ func (node *node) Connect(address string) (*session, error) {
 	if err != nil {
 		_ = session.Close()
 		return nil, err
+	}
+	if resolved, ok := connection.(interface{ ReconnectAddress() string }); ok {
+		address = resolved.ReconnectAddress()
 	}
 	attached := session.attach(connection)
 	if attached.err != nil {
@@ -1239,7 +1405,20 @@ func (node *node) accept(listener *networkListener) {
 }
 
 func (node *node) acceptConnection(connection net.Conn) {
-	if err := connection.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+	deadline := time.Now().Add(15 * time.Second)
+	if err := connection.SetDeadline(deadline); err != nil {
+		_ = connection.Close()
+		node.publishError(err)
+		return
+	}
+	secured, err := transport.AuthenticateServer(connection, deadline)
+	if err != nil {
+		_ = connection.Close()
+		node.publishError(err)
+		return
+	}
+	connection = secured
+	if err = connection.SetDeadline(deadline); err != nil {
 		_ = connection.Close()
 		node.publishError(err)
 		return
@@ -1301,29 +1480,18 @@ func (node *node) acceptConnection(connection net.Conn) {
 }
 
 func (node *node) dialAndHandshake(address, sessionID string, resume bool) (net.Conn, error) {
-	dialer := &net.Dialer{Timeout: 15 * time.Second}
-	configuration := node.configuration.clientTLS.Clone()
-	// Context is confined to the net.Dialer boundary. The session and application
-	// still express cancellation exclusively through owner channels.
-	dialContext, cancelDial := context.WithCancel(context.Background())
-	dialDone := make(chan struct{})
-	dialWatcherDone := make(chan struct{})
-	go func() {
-		defer close(dialWatcherDone)
-		select {
-		case <-node.stopping:
-			cancelDial()
-		case <-dialDone:
-		}
-	}()
-	rawConnection, err := dialer.DialContext(dialContext, "tcp", address)
-	close(dialDone)
-	<-dialWatcherDone
-	cancelDial()
+	endpoint, err := transport.Parse(address)
 	if err != nil {
 		return nil, err
 	}
-	connection := tls.Client(rawConnection, configuration)
+	driver, err := node.transportDriver(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	connection, err := driver.Dial(endpoint, transport.Options{TLS: node.configuration.clientTLS.Clone(), Done: node.stopping, OwnerDone: node.stopping, Security: node.configuration.security})
+	if err != nil {
+		return nil, err
+	}
 	handshakeDone := make(chan struct{})
 	watcherDone := make(chan struct{})
 	defer func() {
@@ -1557,7 +1725,7 @@ func (node *node) run() {
 						command.reply <- nil
 						continue
 					}
-					session = newSession(command.identifier, node.unhandled, disconnectedLease, node.stopping, rootOpenTimeout)
+					session = newSession(command.identifier, node.unhandled, disconnectedLease, node.stopping, rootOpenTimeout, node.configuration.channelTypes...)
 					sessions[command.identifier] = session
 					go forgetCompletedSession(node, session)
 				}
@@ -1656,6 +1824,7 @@ type session struct {
 	rootAdmissionTimeout time.Duration
 	decodeSlots          chan struct{}
 	encodeSlots          chan struct{}
+	channelTypes         []ChannelType
 }
 
 type sessionSendCommand struct {
@@ -1804,7 +1973,7 @@ type channelCapabilityIdentity struct {
 	schema    schemaHash
 }
 
-func newSession(identifier string, unhandled chan<- sessionUnhandledFrame, idleLease time.Duration, ownerDone <-chan struct{}, rootAdmissionTimeout time.Duration) *session {
+func newSession(identifier string, unhandled chan<- sessionUnhandledFrame, idleLease time.Duration, ownerDone <-chan struct{}, rootAdmissionTimeout time.Duration, channelTypes ...ChannelType) *session {
 	session := &session{
 		id:                   identifier,
 		commands:             make(chan any),
@@ -1819,6 +1988,7 @@ func newSession(identifier string, unhandled chan<- sessionUnhandledFrame, idleL
 		rootAdmissionTimeout: rootAdmissionTimeout,
 		decodeSlots:          make(chan struct{}, 1),
 		encodeSlots:          make(chan struct{}, maximumConcurrentEncodings),
+		channelTypes:         append([]ChannelType(nil), channelTypes...),
 	}
 	session.decodeSlots <- struct{}{}
 	for slot := 0; slot < maximumConcurrentEncodings; slot++ {
@@ -2084,6 +2254,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 	importReservations := make(map[uint64]string)
 	pending := make([]networkFrame, 0, 16)
 	wireQueue := make([]networkFrame, 0, 16)
+	var acknowledgementPending, heartbeatPending bool
 	applicationPending := make(map[string]networkFrame)
 	settledApplication := make(map[string]struct{})
 	applicationOrder := make([]string, 0, 16)
@@ -2251,9 +2422,16 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 		}
 		var physicalOutgoing chan physicalWriteCommand
 		var physicalCommand physicalWriteCommand
-		if physical != nil && len(wireQueue) > 0 {
+		if physical != nil && (acknowledgementPending || heartbeatPending || len(wireQueue) > 0) {
 			physicalOutgoing = physical.outgoing
-			physicalCommand = physicalWriteCommand{frame: wireQueue[0]}
+			switch {
+			case acknowledgementPending:
+				physicalCommand.frame = acknowledgementFrame(session.id, nextIncomingSequence-1)
+			case heartbeatPending:
+				physicalCommand.frame = networkFrame{Version: protocolVersion, Kind: frameHeartbeat, SessionID: session.id}
+			default:
+				physicalCommand.frame = wireQueue[0]
+			}
 		}
 		var sendCommands <-chan sessionSendCommand = session.sends
 		var confirmedSendCommands <-chan sessionSendCommand = session.confirmedSends
@@ -2270,7 +2448,14 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 
 		select {
 		case physicalOutgoing <- physicalCommand:
-			wireQueue = wireQueue[1:]
+			switch physicalCommand.frame.Kind {
+			case frameAcknowledgement:
+				acknowledgementPending = false
+			case frameHeartbeat:
+				heartbeatPending = false
+			default:
+				wireQueue = wireQueue[1:]
+			}
 
 		case command := <-sendCommands:
 			releaseInboundApplication(command.frame)
@@ -2523,7 +2708,6 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 					command.reply <- sessionReserveImportCapabilityResult{err: fmt.Errorf("%w: session capability limit reached", ErrPayloadLimit)}
 					continue
 				}
-				internalType := reflect.ChanOf(reflect.BothDir, command.channelType.Elem())
 				allocation := uint64(command.capacity) * uint64(command.channelType.Elem().Size()) // #nosec G115 -- command capacities are validated before admission.
 				if allocation > maximumCapabilityBytes || importedCapabilityBytes > maximumCapabilityBytes-allocation {
 					command.reply <- sessionReserveImportCapabilityResult{err: fmt.Errorf("%w: session capability allocation budget reached", ErrPayloadLimit)}
@@ -2534,7 +2718,11 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 					command.reply <- sessionReserveImportCapabilityResult{err: fmt.Errorf("%w: session capability routing budget reached", ErrPayloadLimit)}
 					continue
 				}
-				channel := reflect.MakeChan(internalType, command.capacity)
+				channel, err := session.makeNativeChannel(command.channelType.Elem(), command.capacity)
+				if err != nil {
+					command.reply <- sessionReserveImportCapabilityResult{err: err}
+					continue
+				}
 				incoming := make(chan networkFrame, channelFrameBufferSize)
 				token := nextCapabilityReservation
 				nextCapabilityReservation++
@@ -2679,6 +2867,9 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 				command.reply <- sessionAttachResult{disconnected: physicalDisconnected}
 
 			case sessionCloseCommand:
+				if acknowledgementPending {
+					wireQueue = append(wireQueue, acknowledgementFrame(session.id, nextIncomingSequence-1))
+				}
 				flushSessionClose(physical, wireQueue, session.id)
 				close(command.reply)
 				return
@@ -2699,6 +2890,10 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 
 		case event := <-connectionEvents:
 			if physical == nil || event.connection != physical {
+				continue
+			}
+			if event.activity {
+				lastActivity = time.Now()
 				continue
 			}
 			if event.err != nil {
@@ -2782,7 +2977,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 				return
 			}
 			if frame.Sequence < nextIncomingSequence {
-				physical.send(acknowledgementFrame(session.id, nextIncomingSequence-1))
+				acknowledgementPending = true
 				continue
 			}
 			if frame.Sequence != nextIncomingSequence {
@@ -2834,7 +3029,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 					}
 				}
 				nextIncomingSequence++
-				physical.send(acknowledgementFrame(session.id, nextIncomingSequence-1))
+				acknowledgementPending = true
 				continue
 			}
 			if frame.Kind == frameOpenChannel {
@@ -2920,7 +3115,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 			}
 
 			nextIncomingSequence++
-			physical.send(acknowledgementFrame(session.id, nextIncomingSequence-1))
+			acknowledgementPending = true
 
 		case <-heartbeatTicker.C:
 			if physical == nil {
@@ -2930,7 +3125,7 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 				_ = physical.connection.Close()
 				continue
 			}
-			physical.send(networkFrame{Version: protocolVersion, Kind: frameHeartbeat, SessionID: session.id})
+			heartbeatPending = true
 
 		case <-leaseExpired:
 			return
@@ -2940,6 +3135,9 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 			return
 
 		case <-session.ownerDone:
+			if acknowledgementPending {
+				wireQueue = append(wireQueue, acknowledgementFrame(session.id, nextIncomingSequence-1))
+			}
 			flushSessionClose(physical, wireQueue, session.id)
 			return
 		}
@@ -3523,8 +3721,10 @@ func runDirectionalChannelBridge(session *session, channelID string, channel ref
 		if activeWrite {
 			activeInbound.activation.cancel()
 		}
-		if !original || closeLocalOnExit {
-			closeReflectChannel(channel)
+		// Only the sending bridge owns closure. Closing an imported send right
+		// would race an application's select send when its stop channel closes.
+		if writeLocal && (!original || closeLocalOnExit) {
+			session.closeNativeChannel(channel)
 		}
 	}()
 	defer func() {
@@ -3621,7 +3821,7 @@ func runDirectionalChannelBridge(session *session, channelID string, channel ref
 		sessionDoneCase := len(cases)
 		cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(session.done)})
 
-		chosen, selected, open, err := selectChannelCases(cases)
+		chosen, selected, open, err := session.selectNativeChannel(channel, cases)
 		if err != nil {
 			revokeChannel(err)
 			return
@@ -3803,6 +4003,114 @@ func runDirectionalChannelBridge(session *session, channelID string, channel ref
 	}
 }
 
+func (session *session) channelType(element reflect.Type) (ChannelType, bool) {
+	for _, binding := range session.channelTypes {
+		if binding.element == element {
+			return binding, true
+		}
+	}
+	return ChannelType{}, false
+}
+
+func (session *session) makeNativeChannel(element reflect.Type, capacity int) (reflect.Value, error) {
+	if binding, found := session.channelType(element); found {
+		return binding.makeChannel(capacity), nil
+	}
+	return makeDynamicChannel(element, capacity)
+}
+
+func (session *session) closeNativeChannel(channel reflect.Value) {
+	if binding, found := session.channelType(channel.Type().Elem()); found {
+		binding.closeChannel(channel)
+		return
+	}
+	closeReflectChannel(channel)
+}
+
+func (session *session) selectNativeChannel(channel reflect.Value, cases []reflect.SelectCase) (int, reflect.Value, bool, error) {
+	if binding, found := session.channelType(channel.Type().Elem()); found {
+		return binding.selectCases(channel, cases)
+	}
+	return selectChannelCases(cases)
+}
+
+func selectTypedChannelCases[T any](channel reflect.Value, cases []reflect.SelectCase) (chosen int, selected reflect.Value, open bool, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%w: native channel operation failed", ErrChannelClosed)
+		}
+	}()
+	var localRead <-chan T
+	var localWrite chan<- T
+	var outgoing T
+	var sends chan sessionSendCommand
+	var command sessionSendCommand
+	var decode <-chan struct{}
+	var incoming <-chan networkFrame
+	var done <-chan struct{}
+	readIndex, writeIndex, sendIndex, decodeIndex, incomingIndex, doneIndex := -1, -1, -1, -1, -1, -1
+	for index, entry := range cases {
+		if entry.Chan.Pointer() == channel.Pointer() {
+			if entry.Dir == reflect.SelectRecv {
+				readIndex = index
+				switch typed := channel.Interface().(type) {
+				case chan T:
+					localRead = typed
+				case <-chan T:
+					localRead = typed
+				default:
+					return 0, reflect.Value{}, false, ErrUnsupportedType
+				}
+			} else {
+				writeIndex = index
+				switch typed := channel.Interface().(type) {
+				case chan T:
+					localWrite = typed
+				case chan<- T:
+					localWrite = typed
+				default:
+					return 0, reflect.Value{}, false, ErrUnsupportedType
+				}
+				outgoing = entry.Send.Interface().(T)
+			}
+			continue
+		}
+		switch typed := entry.Chan.Interface().(type) {
+		case chan sessionSendCommand:
+			sends = typed
+			command = entry.Send.Interface().(sessionSendCommand)
+			sendIndex = index
+		case chan networkFrame:
+			incoming = typed
+			incomingIndex = index
+		case chan struct{}:
+			if decodeIndex < 0 && index < len(cases)-1 {
+				decode = typed
+				decodeIndex = index
+			} else {
+				done = typed
+				doneIndex = index
+			}
+		default:
+			return 0, reflect.Value{}, false, ErrUnsupportedType
+		}
+	}
+	select {
+	case message, received := <-localRead:
+		return readIndex, reflect.ValueOf(&message).Elem(), received, nil
+	case localWrite <- outgoing:
+		return writeIndex, reflect.Value{}, true, nil
+	case sends <- command:
+		return sendIndex, reflect.Value{}, true, nil
+	case _, received := <-decode:
+		return decodeIndex, reflect.Value{}, received, nil
+	case frame, received := <-incoming:
+		return incomingIndex, reflect.ValueOf(frame), received, nil
+	case <-done:
+		return doneIndex, reflect.Value{}, false, nil
+	}
+}
+
 func selectChannelCases(cases []reflect.SelectCase) (chosen int, selected reflect.Value, open bool, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -3824,6 +4132,67 @@ func schemaForType(valueType reflect.Type) schemaHash {
 	return sha256.Sum256(descriptor.bytes)
 }
 
+// reflect.Kind numbers differ between Go and TinyGo. The wire schema retains
+// the original Go v2 numbers, independently of the compiler's internal enum.
+func wireTypeKind(kind reflect.Kind) byte {
+	switch kind {
+	case reflect.Bool:
+		return 1
+	case reflect.Int:
+		return 2
+	case reflect.Int8:
+		return 3
+	case reflect.Int16:
+		return 4
+	case reflect.Int32:
+		return 5
+	case reflect.Int64:
+		return 6
+	case reflect.Uint:
+		return 7
+	case reflect.Uint8:
+		return 8
+	case reflect.Uint16:
+		return 9
+	case reflect.Uint32:
+		return 10
+	case reflect.Uint64:
+		return 11
+	case reflect.Uintptr:
+		return 12
+	case reflect.Float32:
+		return 13
+	case reflect.Float64:
+		return 14
+	case reflect.Complex64:
+		return 15
+	case reflect.Complex128:
+		return 16
+	case reflect.Array:
+		return 17
+	case reflect.Chan:
+		return 18
+	case reflect.Func:
+		return 19
+	case reflect.Interface:
+		return 20
+	case reflect.Map:
+		return 21
+	case reflect.Pointer:
+		return 22
+	case reflect.Slice:
+		return 23
+	case reflect.String:
+		return 24
+	case reflect.Struct:
+		return 25
+	case reflect.UnsafePointer:
+		return 26
+	default:
+		return 0
+	}
+}
+
 func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map[reflect.Type]uint32) {
 	if identifier, exists := seen[valueType]; exists {
 		writer.byte(0)
@@ -3834,7 +4203,7 @@ func writeNetworkTypeSchema(writer *wireWriter, valueType reflect.Type, seen map
 	seen[valueType] = identifier
 	writer.byte(1)
 	writer.uint32(identifier)
-	writer.byte(byte(valueType.Kind())) // #nosec G115 -- reflect.Kind is a byte-sized protocol enum.
+	writer.byte(wireTypeKind(valueType.Kind()))
 	writer.data([]byte(valueType.PkgPath()), maximumWireFrameSize, "type package path")
 	writer.data([]byte(valueType.Name()), maximumWireFrameSize, "type name")
 	if usesBinaryCodec(valueType) {
@@ -3918,12 +4287,6 @@ func errorFromNetworkFrame(frame networkFrame) error {
 	}
 	return fmt.Errorf("%w: %s", category, frame.Error)
 }
-
-const (
-	maximumPayloadDepth     = 64
-	maximumCollectionLength = 1 << 20
-	maximumDecodeAllocation = 64 << 20
-)
 
 var (
 	binaryMarshalerType   = reflect.TypeOf((*encoding.BinaryMarshaler)(nil)).Elem()
@@ -4181,6 +4544,12 @@ func (encoder *binaryValueEncoder) encodeChannel(channel reflect.Value) {
 	if encoder.session == nil {
 		encoder.writer.fail(errors.New("netchan: a channel capability requires a network session"))
 		return
+	}
+	if !dynamicChannelsAvailable {
+		if _, found := encoder.session.channelType(channel.Type().Elem()); !found {
+			encoder.writer.fail(fmt.Errorf("%w: nested channel needs ChannelElement binding", ErrUnsupportedType))
+			return
+		}
 	}
 	if encoder.capabilityCount >= maximumValueCapabilities {
 		encoder.writer.fail(fmt.Errorf("%w: value contains too many channel capabilities", ErrPayloadLimit))
@@ -4566,7 +4935,11 @@ func (decoder *binaryValueDecoder) decodeChannel(destination reflect.Value) {
 		direction:   direction,
 		incoming:    incoming,
 	})
-	destination.Set(proxy.Convert(destination.Type()))
+	if binding, found := decoder.session.channelType(destination.Type().Elem()); found {
+		destination.Set(binding.directional(proxy, destination.Type().ChanDir()))
+	} else {
+		destination.Set(proxy.Convert(destination.Type()))
+	}
 }
 
 func usesBinaryCodec(valueType reflect.Type) bool {

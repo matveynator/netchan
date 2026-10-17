@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -19,6 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/matveynator/netchan/v2/pkg/transport"
+	"github.com/matveynator/netchan/v2/pkg/transport/tcp"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,24 +56,56 @@ func testTLSConfigurations(t *testing.T) (*tls.Config, *tls.Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	privateKeyDER, err := x509.MarshalECPrivateKey(privateKey)
+	parsedCertificate, err := x509.ParseCertificate(certificateDER)
 	if err != nil {
 		t.Fatal(err)
 	}
-	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER})
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privateKeyDER})
-	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
+	certificate := tls.Certificate{Certificate: [][]byte{certificateDER}, PrivateKey: privateKey, Leaf: parsedCertificate}
 	rootCertificates := x509.NewCertPool()
-	if !rootCertificates.AppendCertsFromPEM(certificatePEM) {
-		t.Fatal("failed to trust test certificate")
-	}
+	rootCertificates.AddCert(parsedCertificate)
 
 	serverTLS := &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13}
 	clientTLS := &tls.Config{RootCAs: rootCertificates, ServerName: "localhost", MinVersion: tls.VersionTLS13}
 	return serverTLS, clientTLS
+}
+
+func TestStaticChannelBindings(t *testing.T) {
+	type task struct {
+		Text  string
+		Reply chan<- string
+		Stop  <-chan struct{}
+	}
+	serverNode, _, clientSession, _ := connectedTestSessionsWithLease(t, nil, 0, ChannelElement[string](), ChannelElement[struct{}]())
+	accepted := make(chan *Channel[task], 1)
+	if err := publishRoot(serverNode, accepted, 0); err != nil {
+		t.Fatal(err)
+	}
+	client, _, err := openRoot[task](clientSession, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := receiveWithTimeout(t, accepted)
+	reply := make(chan string)
+	stop := make(chan struct{})
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(task{Text: "typed", Reply: reply, Stop: stop}) }()
+	received := receiveWithTimeout(t, server.Receive)
+	if received.Text != "typed" {
+		t.Fatal(received.Text)
+	}
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	go func() { received.Reply <- "answer" }()
+	if response := receiveWithTimeout(t, reply); response != "answer" {
+		t.Fatal(response)
+	}
+	close(stop)
+	waitForClose(t, received.Stop)
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForClose(t, server.Done)
 }
 
 func TestChannelCapacityAppliesOnlyToSend(t *testing.T) {
@@ -317,6 +351,111 @@ func TestTaskCancellationArrivesBeforeReply(t *testing.T) {
 	waitForClose(t, task.Done)
 	waitForClose(t, handlerDone)
 	waitForClose(t, reply)
+}
+
+func TestTaskStopSignal(t *testing.T) {
+	client, server, _, _ := connectedChannels[nestedTask](t, 0, 0)
+	reply := make(chan string)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() { _ = client.Deliver(nestedTask{Reply: reply, Done: stop}) }()
+	task := receiveWithTimeout(t, server.Receive)
+	sent := make(chan struct{})
+	go func() {
+		stop <- struct{}{}
+		close(sent)
+	}()
+	receiveWithTimeout(t, task.Done)
+	waitForClose(t, sent)
+	close(task.Reply)
+	waitForClose(t, reply)
+}
+
+func TestTaskStopClosesWhenRequesterSessionEnds(t *testing.T) {
+	client, server, clientSession, _ := connectedChannels[nestedTask](t, 0, 0)
+	reply := make(chan string)
+	stop := make(chan struct{})
+	defer close(stop)
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(nestedTask{Reply: reply, Done: stop}) }()
+	task := receiveWithTimeout(t, server.Receive)
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	if err := clientSession.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForClose(t, task.Done)
+	waitForClose(t, server.Done)
+	// Once bridges have exited, a closed send proxy would panic even when
+	// the stop case is ready. An open abandoned proxy simply cannot send.
+	for attempt := 0; attempt < 100; attempt++ {
+		select {
+		case task.Reply <- "obsolete":
+			t.Fatal("reply accepted after session termination")
+		case <-task.Done:
+		}
+	}
+	close(task.Reply)
+}
+
+func TestTaskStopSurvivesReconnect(t *testing.T) {
+	client, server, clientSession, serverSession := connectedChannels[nestedTask](t, 0, 0)
+	reply := make(chan string)
+	stop := make(chan struct{})
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(nestedTask{Reply: reply, Done: stop}) }()
+	task := receiveWithTimeout(t, server.Receive)
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	disconnectSession(t, clientSession)
+	select {
+	case <-task.Done:
+		t.Fatal("temporary disconnect cancelled task")
+	default:
+	}
+	close(stop)
+	clientConnection, serverConnection := net.Pipe()
+	if attached := serverSession.attach(serverConnection); attached.err != nil {
+		t.Fatal(attached.err)
+	}
+	if attached := clientSession.attach(clientConnection); attached.err != nil {
+		t.Fatal(attached.err)
+	}
+	waitForClose(t, task.Done)
+	close(task.Reply)
+	waitForClose(t, reply)
+}
+
+func TestTaskStopClosesAfterDisconnectedLease(t *testing.T) {
+	serverNode, _, clientSession, _ := connectedTestSessionsWithLease(t, nil, 40*time.Millisecond)
+	accepted := make(chan *Channel[nestedTask], 1)
+	if err := publishRoot(serverNode, accepted, 0); err != nil {
+		t.Fatal(err)
+	}
+	client, _, err := openRoot[nestedTask](clientSession, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := receiveWithTimeout(t, accepted)
+	stop := make(chan struct{})
+	defer close(stop)
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(nestedTask{Reply: make(chan string), Done: stop}) }()
+	task := receiveWithTimeout(t, server.Receive)
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	disconnectSession(t, clientSession)
+	waitForClose(t, task.Done)
+	waitForClose(t, server.Done)
+	close(task.Reply)
+	select {
+	case <-stop:
+		t.Fatal("NetChan closed the requester-owned stop channel")
+	default:
+	}
 }
 
 func TestTaskCancellationSurvivesUntilParentReceive(t *testing.T) {
@@ -939,6 +1078,101 @@ func TestAcceptedRootOpenCancelsAdmissionTimeout(t *testing.T) {
 	}
 }
 
+type unavailableTransport string
+
+func (driver unavailableTransport) Scheme() string { return string(driver) }
+func (unavailableTransport) Listen(transport.Endpoint, transport.Options) (net.Listener, error) {
+	return nil, transport.ErrUnsupported
+}
+func (unavailableTransport) Dial(transport.Endpoint, transport.Options) (net.Conn, error) {
+	return nil, transport.ErrUnsupported
+}
+
+func TestPublicNearbyDiscovery(t *testing.T) { testPublicNearbyDiscovery(t, nil) }
+
+func testPublicNearbyDiscovery(t *testing.T, security transport.Security) {
+	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
+		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow multicast discovery")
+	}
+	identifier, err := randomIdentifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTLS, clientTLS := testTLSConfigurations(t)
+	drivers := []transport.Driver{tcp.Driver{}, unavailableTransport("quic"), unavailableTransport("rfcomm"), unavailableTransport("ble")}
+	address := "nearby:///test-" + identifier
+	listener, err := Listen[int](address, Config{TLS: serverTLS, Transports: drivers, Security: security})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	client, err := Dial[int](address, Config{TLS: clientTLS, Transports: drivers, Security: security})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Abort()
+	server := receiveWithTimeout(t, listener.Channels)
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(42) }()
+	if received := receiveWithTimeout(t, server.Receive); received != 42 {
+		t.Fatalf("nearby value = %d", received)
+	}
+	if err = receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPublicTransportSchemes(t *testing.T) {
+	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
+		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow local transport listeners")
+	}
+	for _, scheme := range []string{"tcp", "quic", "udp"} {
+		t.Run(scheme, func(t *testing.T) {
+			type request struct {
+				Text  string
+				Reply chan<- string
+				Stop  <-chan struct{}
+			}
+			serverTLS, clientTLS := testTLSConfigurations(t)
+			listener, err := Listen[request](scheme+"://127.0.0.1:0", Config{TLS: serverTLS})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = listener.Close() })
+			client, err := Dial[request](listener.Address, Config{TLS: clientTLS})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Abort() })
+			server := receiveWithTimeout(t, listener.Channels)
+			reply := make(chan string)
+			stop := make(chan struct{})
+			delivered := make(chan error, 1)
+			go func() { delivered <- client.Deliver(request{Text: "over " + scheme, Reply: reply, Stop: stop}) }()
+			received := receiveWithTimeout(t, server.Receive)
+			if received.Text != "over "+scheme {
+				t.Fatalf("received %q", received.Text)
+			}
+			if err := receiveWithTimeout(t, delivered); err != nil {
+				t.Fatal(err)
+			}
+			go func() { received.Reply <- "reply" }()
+			if response := receiveWithTimeout(t, reply); response != "reply" {
+				t.Fatal(response)
+			}
+			close(stop)
+			waitForClose(t, received.Stop)
+			if err := client.Close(); err != nil {
+				t.Fatal(err)
+			}
+			waitForClose(t, server.Done)
+		})
+	}
+}
+
 func TestPublicListenAndDial(t *testing.T) {
 	if os.Getenv("NETCHAN_NETWORK_TEST") == "" {
 		t.Skip("set NETCHAN_NETWORK_TEST=1 to allow a local TCP listener")
@@ -1170,12 +1404,17 @@ func connectedTestSessions(t *testing.T) (*node, *node, *session, *session) {
 
 func connectedTestSessionsWithObservation(t *testing.T, observed chan<- observedNetworkFrame) (*node, *node, *session, *session) {
 	t.Helper()
+	return connectedTestSessionsWithLease(t, observed, 0)
+}
+
+func connectedTestSessionsWithLease(t *testing.T, observed chan<- observedNetworkFrame, lease time.Duration, bindings ...ChannelType) (*node, *node, *session, *session) {
+	t.Helper()
 	serverTLS, clientTLS := testTLSConfigurations(t)
-	serverNode, err := newNode(withTLSConfigs(serverTLS, clientTLS))
+	serverNode, err := newNode(withTLSConfigs(serverTLS, clientTLS), withChannelTypes(bindings))
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientNode, err := newNode(withTLSConfigs(serverTLS, clientTLS))
+	clientNode, err := newNode(withTLSConfigs(serverTLS, clientTLS), withChannelTypes(bindings))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1183,13 +1422,21 @@ func connectedTestSessionsWithObservation(t *testing.T, observed chan<- observed
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientSession := newSession(identifier, clientNode.unhandled, 0, clientNode.stopping, 0)
+	clientSession := newSession(identifier, clientNode.unhandled, lease, clientNode.stopping, 0, bindings...)
 	if err := clientNode.registerSession(clientSession); err != nil {
 		t.Fatal(err)
 	}
-	serverSessionReply := make(chan *session, 1)
-	serverNode.commands <- nodeFindSessionCommand{identifier: identifier, create: true, reply: serverSessionReply}
-	serverSession := <-serverSessionReply
+	var serverSession *session
+	if lease == 0 {
+		serverSessionReply := make(chan *session, 1)
+		serverNode.commands <- nodeFindSessionCommand{identifier: identifier, create: true, reply: serverSessionReply}
+		serverSession = <-serverSessionReply
+	} else {
+		serverSession = newSession(identifier, serverNode.unhandled, lease, serverNode.stopping, 0, bindings...)
+		if err := serverNode.registerSession(serverSession); err != nil {
+			t.Fatal(err)
+		}
+	}
 	clientConnection, serverConnection := net.Pipe()
 	if observed != nil {
 		clientConnection, serverConnection = observedConnectionPair(t, observed)
@@ -1318,9 +1565,9 @@ func receiveNetworkFrameKind(t *testing.T, connection net.Conn, kind frameKind) 
 func waitForClose[T any](t *testing.T, channel <-chan T) {
 	t.Helper()
 	select {
-	case _, open := <-channel:
+	case received, open := <-channel:
 		if open {
-			t.Fatal("received a value while waiting for channel closure")
+			t.Fatalf("received %v while waiting for channel closure", received)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for channel closure")

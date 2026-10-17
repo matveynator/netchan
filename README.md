@@ -463,7 +463,7 @@ entire right of contact.
 ## Reconnection and delivery guarantees
 
 After a successful `Dial`, the application continues using the same `Channel`
-even when the physical TCP/TLS transport is temporarily replaced. NetChan v2:
+even when the physical transport is temporarily replaced. NetChan v2:
 
 - replays unacknowledged frames after reconnection;
 - never presents the same value to the application twice;
@@ -597,23 +597,142 @@ Protocol v2 is the second published version. Intermediate implementations
 numbered 2, 3, and 4 during development were attempts at the same transition
 from protocol v1 and are not considered separately released protocols.
 
-## TODO and future transports
+## Transport addresses
 
-The current implementation uses TCP/TLS. Support for QUIC over UDP, Bluetooth
-RFCOMM, BLE, automatic nearby discovery, and duplex QR exchange through a camera
-and display has been deferred and is not yet part of the public API.
+Protocol v2 runs over TCP, reliable UDP/QUIC, and Bluetooth. Bare `host:port`
+addresses retain their TCP meaning. `Listen`, `Dial`, `Deliver`, channel ownership,
+nested capabilities, and session reconnect keep the same semantics.
 
-Agreed architectural decisions and milestones are recorded in [TODO.md](TODO.md).
+| Address | Physical connection |
+|---|---|
+| `127.0.0.1:9876`, `tcp://127.0.0.1:9876` | TCP with TLS 1.3 |
+| `quic://127.0.0.1:9876`, `udp://127.0.0.1:9876` | One reliable QUIC stream, ALPN `netchan/2`, built-in TLS |
+| `rfcomm://AA:BB:CC:DD:EE:FF/tasks` | Bluetooth Classic stream with TLS 1.3 |
+| `ble://<device-id>/tasks` | Reliable GATT packet stream with TLS 1.3 |
+| `nearby://<peer-id>/tasks`, `nearby:///tasks` | Discover and select an available authenticated transport |
+
+For Bluetooth listeners, leave the device ID empty to select the default radio:
+`ble:///tasks` or `rfcomm:///tasks`. A macOS BLE device ID is a CoreBluetooth UUID;
+Linux and Windows clients use a Bluetooth MAC address. Configure the expected
+certificate name in `Config.TLS.ServerName` when dialing Bluetooth or nearby peers whose certificate names differ from their IP addresses.
+
+QUIC provides retransmission, ordering, flow control, and congestion control over
+UDP. The `udp://` alias has the same delivery guarantees as `quic://`. BLE uses a
+bounded acknowledgement window, fragmentation, retransmission, duplicate
+suppression, and stream backpressure, including at the minimum 20-byte GATT size.
+Discovery records also use bounded control fragments when a board cannot perform
+long GATT reads. Discovery stops and joins each scan before connecting, allowing
+single-session controllers to hand the radio from the scanner to the connection.
+
+A nearby listener combines its available physical listeners in one node and one
+session registry. Discovery uses DNS-SD `_netchan._tcp.local` and
+`_netchan._udp.local`, SDP descriptions, and BLE service characteristics. Records
+expire; discovery hints never replace certificate validation. The peer ID is the
+SHA-256 fingerprint of the certificate's SPKI public key. A listener instance has
+its own random identity. Ambiguous discovery returns `ErrAmbiguousPeer`.
+
+Selection prefers QUIC, TCP, RFCOMM, then BLE, with staggered connection attempts.
+Only the winning authenticated stream receives HELLO/RESUME. Reconnect pins the
+original peer and instance, rediscovers endpoints, and can resume the same session
+through a different transport. The disconnected-session lease remains five minutes.
+
+### Platform and compiler capabilities
+
+Backends are selected individually by build tags; a missing backend returns
+`ErrUnsupportedTransport` without excluding its OS or processor. An unavailable
+radio or denied OS permission returns a runtime error. Custom `transport.Driver`,
+`ble.Radio`, and `rfcomm.Radio` implementations can supply additional SDK backends.
+
+| Target | TCP | QUIC/UDP | RFCOMM | BLE central/peripheral |
+|---|---|---|---|---|
+| Go, Linux amd64/arm64 | yes | yes | BlueZ | BlueZ GATT |
+| Go, Windows amd64/arm64 | yes | yes | Winsock + SDP | WinRT |
+| Go, macOS amd64/arm64 | yes | yes | custom radio | CoreBluetooth via purego |
+| Go, FreeBSD/OpenBSD amd64/arm64 | yes | yes | custom radio | custom radio |
+| TinyGo, hosted | network backend | custom driver | custom driver | target SDK/custom radio |
+| TinyGo, nRF52840 SoftDevice | custom network backend | custom driver | custom driver | SoftDevice |
+| TinyGo, Pico W | netdev | custom driver | custom driver | CYW43439 |
+| TinyGo, ESP32-C3 / ESP32-S3 | netdev | custom driver | custom driver | espradio |
+| TinyGo, ESP32 Xtensa | netdev | custom driver | custom driver | custom radio; SDK BLE unavailable |
+
+The board's normal TinyGo target tags choose the SDK. `netchan_no_tcp`,
+`netchan_no_quic`, `netchan_no_rfcomm`, and `netchan_no_ble` disable only the named
+built-in transport. `netchan_tcp` enables TCP for an additional bare-metal netdev.
+SDK initialization, credentials, advertising permissions, and radio availability
+remain properties of the application and device. macOS applications need Bluetooth
+authorization and a bundle usage description (`NSBluetoothAlwaysUsageDescription`)
+when requesting access. Missing permission leaves other transports available. Create one `ble.SDKRadio` per physical
+embedded radio and reuse its driver through `Config.Transports` across nodes; a
+single-connection SDK cannot serve central and peripheral roles simultaneously.
+
+Ordinary Go builds, dependencies, and tests use `CGO_ENABLED=0`. TinyGo may use its
+own runtime and board SDK native code. Desktop adapters use D-Bus, Winsock/WinRT,
+and Objective-C through purego; application synchronization stays channel based.
+
+### TinyGo
+
+TinyGo 0.43 is checked with the same v2 binary protocol and static bindings for
+nested `Reply` and `Stop` channels. Register every nested channel element type:
+
+```go
+func tinyGoConfiguration(configuration *tls.Config, security transport.Security) netchan.Config {
+    return netchan.Config{
+        TLS: configuration,
+        Security: security,
+        ChannelTypes: []netchan.ChannelType{
+            netchan.ChannelElement[string](),
+            netchan.ChannelElement[struct{}](),
+        },
+    }
+}
+```
+
+TinyGo does not implement the reflection operations needed to manufacture and
+select arbitrary channel types. Missing bindings fail explicitly; other types
+and transports stay available. Ordinary Go can use dynamic channel reflection
+or the same static bindings.
+
+TinyGo's standard `crypto/tls.Client` and `Server` are offload wrappers and do not
+provide software TLS over arbitrary BLE/TCP streams. Supply a verified TLS engine
+through `Config.Security`, or a `Config.Transports` driver that already supplies
+an authenticated stream. Without that engine, built-in TinyGo stream transports
+fail closed with `ErrTransportUnavailable`. The backend must enforce TLS 1.3,
+certificate trust, hostname checks, cancellation, and `VerifyConnection` peer pins;
+wrapping a raw stream with TinyGo's TLS stub is insufficient. See the
+[upstream limitation](https://github.com/tinygo-org/tinygo/issues/5696).
+
+Bare-metal builds use smaller per-session memory budgets: 8 pending frames,
+4 KiB maximum wire frame, 3 KiB maximum value payload, and 8 KiB byte budgets.
+The `netchan_small` tag selects those limits for Go interoperability checks.
+Larger values fail with `ErrPayloadLimit`; wire encoding stays compatible.
 
 ## Project checks
 
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
+Use Go 1.26.9 or newer for the current TLS security fixes.
+The required CI status retains its historical `go1.19 compatibility` name;
+it tests the supported minimum Go 1.26.9, not Go 1.19.
 
-NETCHAN_NETWORK_TEST=1 go test -run 'TestPublic(ListenAndDial|ConfigAndListenerLifecycle|ClientsRemainIndependent|ListenerCloseTerminatesActiveChannel|ListenerCloseInterruptsIncompleteHandshake)$' -v .
+```bash
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go vet ./...
+CGO_ENABLED=0 NETCHAN_NETWORK_TEST=1 go test -run TestPublic -v .
+CGO_ENABLED=0 go run ./scripts/crosscompile
+
+tinygo test -run TestStaticChannelBindings .
+tinygo build -tags=netchan_interop -o /tmp/netchan-tinygo-interop ./scripts/crosscompile/interop
+CGO_ENABLED=0 NETCHAN_TINYGO_TEST_BINARY=/tmp/netchan-tinygo-interop go test -run TestTinyGoWireInteroperability .
+go run ./scripts/crosscompile -tinygo tinygo
 ```
+
+The interoperability test uses a Go TLS 1.3 engine and private pipes as an offload
+boundary. It verifies a real Go/TinyGo exchange, delivery, and nested channels;
+it does not validate a board's TLS SDK or physical Bluetooth radio. CI checks
+native cross-compilation, representative TinyGo processors/SDKs, protocol tests,
+packet loss/reordering, certificate rejection, cancellation, vet, govulncheck,
+gosec, and CodeQL. Hardware acceptance requires the relevant devices.
+
+Remaining transport and hardware work is tracked in [TODO.md](TODO.md), including
+native macOS/FreeBSD RFCOMM adapters and duplex QR camera/display exchange.
 
 ## Community and support
 
