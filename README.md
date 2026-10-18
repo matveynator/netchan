@@ -2,6 +2,9 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan/v2.svg)](https://pkg.go.dev/github.com/matveynator/netchan/v2)
 
+<details open>
+<summary><b>🇷🇺 Русский</b></summary>
+
 # Что такое NetChan?
 
 Я пытаюсь донести довольно простую идею: если двум распределённым задачам нужно синхронизироваться, для этого не обязательно вводить третью сущность в виде общей базы, Redis, lock-сервиса или общей копии состояния.
@@ -33,6 +36,11 @@
 А можно по возможности вообще не создавать копию. Если что-то должно принадлежать строго одному участнику — передавать владение этим напрямую.
 
 Тогда синхронизация получается не отдельным механизмом поверх системы, а свойством самой коммуникации. И именно из этой идеи выросла библиотека NetChan.
+
+</details>
+
+<details>
+<summary><b>🇬🇧 English</b></summary>
 
 # What is NetChan?
 
@@ -104,6 +112,7 @@ Then synchronization stops being a separate coordination layer built on top of t
 
 Synchronization emerges naturally from the way the processes communicate. Thats why NetChan was born.
 
+</details>
 
 ## Why NetChan
 
