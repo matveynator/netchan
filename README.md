@@ -2,6 +2,8 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/netchan/v2.svg)](https://pkg.go.dev/github.com/matveynator/netchan/v2)
 
+# Что такое NetChan?
+
 Я пытаюсь донести довольно простую идею: если двум распределённым задачам нужно синхронизироваться, для этого не обязательно вводить третью сущность в виде общей базы, Redis, lock-сервиса или общей копии состояния.
 
 Обычно мы делаем так: два процесса имеют свои состояния, а потом создаём ещё одно общее состояние где-то посередине и через него договариваемся, кто что сейчас может делать. То есть синхронизация происходит через копию или запись о реальном положении вещей.
@@ -30,7 +32,77 @@
 
 А можно по возможности вообще не создавать копию. Если что-то должно принадлежать строго одному участнику — передавать владение этим напрямую.
 
-Тогда синхронизация получается не отдельным механизмом поверх системы, а свойством самой коммуникации.
+Тогда синхронизация получается не отдельным механизмом поверх системы, а свойством самой коммуникации. И именно из этой идеи выросла библиотека NetChan.
+
+# What is NetChan?
+
+What I’m trying to get people to think about is a more genuinely distributed model.
+
+If two tasks need to synchronize, they do not necessarily need some third thing in the middle to synchronize through.
+
+We are so used to doing this with Redis, databases, distributed locks, shared state, replicated state — some external place where we record who owns what, who is allowed to proceed, and what the current state of the world is.
+
+But why create a second representation of reality just so that two processes can agree about the first one?
+
+Think about a physical object. One apple.
+
+Either I have the apple, or you have the apple.
+
+If I give it to you, I no longer have it.
+
+We do not need a third party maintaining a record that says:
+
+`apple_owner = you`
+
+The transfer of the apple is the change of state.
+
+That is the important part.
+
+The communication itself performs the synchronization.
+
+This is the way I think about NetChan.
+
+Instead of having two processes communicate indirectly through shared state:
+
+`process A -> Redis <- process B`
+
+they communicate directly:
+
+`process A -> channel -> process B`
+
+And the thing being passed through the channel can itself represent ownership, permission, work, capacity, or the right to continue.
+
+There is no separate copy saying, “A currently owns the token.”
+
+A has the token.
+
+Then A sends it to B.
+
+Now B has it.
+
+The message transfer is not a notification about a state change.
+
+It is the state change.
+
+That distinction is fundamental.
+
+In software, copying state is so cheap that we tend to copy everything first and then spend enormous effort trying to keep all those copies consistent.
+
+In the physical world, you normally do not have this problem. A concrete thing is somewhere. If you move it, its location changes. You do not first update a database that describes where the thing is and then somehow synchronize reality with that database.
+
+So the idea is: whenever the problem allows it, do not synchronize copies of ownership.
+
+Do not describe ownership in shared state.
+
+Transfer ownership.
+
+Do not use communication to tell another process that the state has changed.
+
+Make the communication itself be the state transition.
+
+Then synchronization stops being a separate coordination layer built on top of the system.
+
+Synchronization emerges naturally from the way the processes communicate. Thats why NetChan was born.
 
 
 ## Why NetChan
