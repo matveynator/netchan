@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	github.com/ebitengine/purego v0.11.1
-	github.com/go-ole/go-ole v1.2.6
+	github.com/go-ole/go-ole v1.3.0
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/libp2p/zeroconf/v2 v2.2.0
 	github.com/quic-go/quic-go v0.63.0
