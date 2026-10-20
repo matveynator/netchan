@@ -1999,3 +1999,52 @@ func FuzzDecodeNetworkFrame(f *testing.F) {
 ////////////////////////////////////////////////////////////////////////////////
 // END: Version 2 binary protocol tests
 ////////////////////////////////////////////////////////////////////////////////
+
+type metadataNetworkAddress string
+
+func (address metadataNetworkAddress) Network() string { return string(address) }
+func (address metadataNetworkAddress) String() string  { return "test-peer" }
+
+type metadataNetworkConnection struct {
+	net.Conn
+	network string
+}
+
+func (connection metadataNetworkConnection) RemoteAddr() net.Addr {
+	return metadataNetworkAddress(connection.network)
+}
+
+func TestReceiveMetadataRetainsFrameNetworkAcrossReconnect(t *testing.T) {
+	client, server, clientSession, serverSession := connectedChannels[int](t, 0, 0)
+	delivered := make(chan error, 1)
+	go func() { delivered <- client.Deliver(17) }()
+	assertStillWaiting(t, delivered)
+	disconnectSession(t, clientSession)
+	local, remote := net.Pipe()
+	if attached := serverSession.attach(metadataNetworkConnection{Conn: remote, network: "reconnected"}); attached.err != nil {
+		t.Fatal(attached.err)
+	}
+	if attached := clientSession.attach(local); attached.err != nil {
+		t.Fatal(attached.err)
+	}
+	first := receiveWithTimeout(t, server.ReceiveWithMetadata)
+	if first.Value != 17 || first.Network != "pipe" {
+		t.Fatalf("queued frame metadata changed after reconnect: %+v", first)
+	}
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	go func() { delivered <- client.Deliver(18) }()
+	second := receiveWithTimeout(t, server.ReceiveWithMetadata)
+	if second.Value != 18 || second.Network != "reconnected" {
+		t.Fatalf("new frame metadata: %+v", second)
+	}
+	if err := receiveWithTimeout(t, delivered); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case duplicate := <-server.Receive:
+		t.Fatalf("duplicate value: %v", duplicate)
+	case <-time.After(80 * time.Millisecond):
+	}
+}
