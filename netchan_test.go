@@ -2015,10 +2015,22 @@ func (connection metadataNetworkConnection) RemoteAddr() net.Addr {
 }
 
 func TestReceiveMetadataRetainsFrameNetworkAcrossReconnect(t *testing.T) {
-	client, server, clientSession, serverSession := connectedChannels[int](t, 0, 0)
+	observed := make(chan observedNetworkFrame, 256)
+	serverNode, _, clientSession, serverSession := connectedTestSessionsWithObservation(t, observed)
+	accepted := make(chan *Channel[int], 1)
+	if err := publishRoot(serverNode, accepted, 0); err != nil {
+		t.Fatal(err)
+	}
+	client, _, err := openRoot[int](clientSession, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := receiveWithTimeout(t, accepted)
 	delivered := make(chan error, 1)
 	go func() { delivered <- client.Deliver(17) }()
-	assertStillWaiting(t, delivered)
+	waitForObservedFrame(t, observed, func(observation observedNetworkFrame) bool {
+		return !observation.fromClient && observation.frame.Kind == frameChannelPrepared
+	})
 	disconnectSession(t, clientSession)
 	local, remote := net.Pipe()
 	if attached := serverSession.attach(metadataNetworkConnection{Conn: remote, network: "reconnected"}); attached.err != nil {
