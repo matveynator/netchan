@@ -92,11 +92,12 @@ const (
 )
 
 type networkFrame struct {
-	Version   uint16
-	Kind      frameKind
-	SessionID string
-	Sequence  uint64
-	Ack       uint64
+	receivedNetwork string // Local metadata; never encoded on the wire.
+	Version         uint16
+	Kind            frameKind
+	SessionID       string
+	Sequence        uint64
+	Ack             uint64
 
 	ChannelID  string
 	TransferID string
@@ -879,11 +880,23 @@ type deliveryRequest[T any] struct {
 // Channel exposes the network boundary as ordinary directional Go channels.
 // Keeping the directions separate prevents local senders and receivers from
 // rendezvousing with each other and accidentally bypassing the network.
+// ReceivedValue pairs a root-channel value with the receiver-observed network
+// of the authenticated physical stream carrying its frame (for example tcp or
+// udp). Metadata is local, never supplied by the peer, and retained across replay.
+type ReceivedValue[T any] struct {
+	Value   T
+	Network string
+}
+
 type Channel[T any] struct {
-	Send    chan<- T
-	Receive <-chan T
-	Errors  <-chan error
-	Done    <-chan struct{}
+	// ReceiveWithMetadata competes with Receive for the same values. Applications
+	// should consume one surface; neither duplicates values or changes Deliver ACKs.
+	ReceiveWithMetadata <-chan ReceivedValue[T]
+	received            chan ReceivedValue[T]
+	Send                chan<- T
+	Receive             <-chan T
+	Errors              <-chan error
+	Done                <-chan struct{}
 
 	outgoing     chan T
 	incoming     chan T
@@ -896,9 +909,11 @@ type Channel[T any] struct {
 func newChannel[T any](capacity int) *Channel[T] {
 	outgoing := make(chan T, capacity)
 	incoming := make(chan T)
+	received := make(chan ReceivedValue[T])
 	errorsChannel := make(chan error, 32)
 	done := make(chan struct{})
 	return &Channel[T]{
+		ReceiveWithMetadata: received, received: received,
 		Send:       outgoing,
 		Receive:    incoming,
 		Errors:     errorsChannel,
@@ -2921,6 +2936,9 @@ func (session *session) run(unhandled chan<- sessionUnhandledFrame) {
 			}
 
 			frame := event.frame
+			if address := physical.connection.RemoteAddr(); address != nil {
+				frame.receivedNetwork = address.Network()
+			}
 			lastActivity = time.Now()
 			if frame.SessionID != session.id {
 				err := fmt.Errorf("%w: frame belongs to another session", ErrMalformedFrame)
@@ -3341,6 +3359,7 @@ func runRootChannelBridge[T any](session *session, channelID string, channel *Ch
 	inboundQueue := make([]networkFrame, 0, 4)
 	var writeLocal chan<- T
 	var localValue T
+	var localNetwork string
 	var activeInbound string
 	var inboundActivation capabilityActivation
 	var pendingDelivery *deliveryRequest[T]
@@ -3384,6 +3403,7 @@ func runRootChannelBridge[T any](session *session, channelID string, channel *Ch
 		}
 		closeOwnedChannel(channel.outgoing)
 		close(channel.incoming)
+		close(channel.received)
 		close(channel.errors)
 		close(channel.done)
 	}()
@@ -3471,6 +3491,11 @@ func runRootChannelBridge[T any](session *session, channelID string, channel *Ch
 			strictRequests = channel.deliveries
 		}
 
+		var writeMetadata chan ReceivedValue[T]
+		if writeLocal != nil {
+			writeMetadata = channel.received
+		}
+
 		select {
 		case <-decodeSlot:
 			frame := inboundQueue[0]
@@ -3491,6 +3516,7 @@ func runRootChannelBridge[T any](session *session, channelID string, channel *Ch
 			}
 			activeInbound = frame.TransferID
 			localValue = decoded.value.Interface().(T)
+			localNetwork = frame.receivedNetwork
 			inboundActivation = activation
 			writeLocal = channel.incoming
 			if err := session.send(networkFrame{Kind: frameChannelPrepared, ChannelID: channelID, TransferID: activeInbound}); err != nil {
@@ -3533,6 +3559,17 @@ func runRootChannelBridge[T any](session *session, channelID string, channel *Ch
 			outboundFrames = outboundFrames[1:]
 
 		case writeLocal <- localValue:
+			writeLocal = nil
+			inboundActivation.activate()
+			inboundActivation = capabilityActivation{}
+			delivered[activeInbound] = struct{}{}
+			delete(inboundIdentifiers, activeInbound)
+			if err := session.send(networkFrame{Kind: frameChannelDelivered, ChannelID: channelID, TransferID: activeInbound}); err != nil {
+				return
+			}
+			activeInbound = ""
+
+		case writeMetadata <- ReceivedValue[T]{Value: localValue, Network: localNetwork}:
 			writeLocal = nil
 			inboundActivation.activate()
 			inboundActivation = capabilityActivation{}
