@@ -14,8 +14,8 @@ github.com/miekg/dns v1.1.43/go.mod h1:+evo5L0630/F6ca/Z9+GAqzhjGyn8/c+TBaOyfEl0
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/quic-go/go-ossfuzz-seeds v0.1.0 h1:APacT+iIaNF6fd8AGEiN3bT/Jtkd2jz4v4TzM7MFjy0=
 github.com/quic-go/go-ossfuzz-seeds v0.1.0/go.mod h1:3IOHRbJIc+L6YKMwfDtJAM9Vj9k0YY4muhuyUYk5tbk=
-github.com/quic-go/quic-go v0.63.0 h1:LIFGHI4PFUhhw2dDD1ARHdCff143ffMHwZtbnbuJ78A=
-github.com/quic-go/quic-go v0.63.0/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
+github.com/quic-go/quic-go v0.64.1 h1:BCNTP+6x6++OPKrGST2FR3f1tycx8O3QOA3QQv09g70=
+github.com/quic-go/quic-go v0.64.1/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
 github.com/saltosystems/winrt-go v0.0.0-20260317170058-9c2fec580d96 h1:IXxzj3yjfDNXZJ35foY+RpFShqPsZZ81hhCckgfh5PI=
 github.com/saltosystems/winrt-go v0.0.0-20260317170058-9c2fec580d96/go.mod h1:CIltaIm7qaANUIvzr0Vmz71lmQMAIbGJ7cvgzX7FMfA=
 github.com/sirupsen/logrus v1.5.0/go.mod h1:+F7Ogzej0PZc/94MaYx/nvG9jOFMD2osvC3s+Squfpo=

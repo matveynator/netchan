@@ -7,7 +7,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/libp2p/zeroconf/v2 v2.2.0
-	github.com/quic-go/quic-go v0.63.0
+	github.com/quic-go/quic-go v0.64.1
 	github.com/saltosystems/winrt-go v0.0.0-20260317170058-9c2fec580d96
 	golang.org/x/sys v0.49.0
 	tinygo.org/x/bluetooth v0.16.0
