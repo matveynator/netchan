@@ -28,11 +28,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Test packages
         run: go test -count=1 ./...
-      - name: Test embedded decoder budgets
+      - name: Verify listener acceptance ownership under race detector
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=5 -run '^TestListenerShutdownWhileAdmissionPending
         run: go test -count=1 -tags=netchan_small -run TestSmallDecoderRejectsAllocationBeforeReadingElements .
       - name: Test public TLS boundary
         env:
@@ -45,7 +48,7 @@ jobs:
 
   compatibility:
     # Repository rules require this historical status context. The supported
-    # minimum is Go 1.26.9, enforced by go.mod and setup-go below.
+    # minimum is Go 1.26.10, enforced by go.mod and setup-go below.
     name: go1.19 compatibility
     runs-on: ubuntu-22.04
     steps:
@@ -54,7 +57,7 @@ jobs:
       - name: Set up minimum Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Test packages
         run: go test -count=1 ./...
@@ -66,7 +69,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Exercise native delegate ownership without radio access
         run: go test -count=1 -run TestAppleDelegateReuse ./pkg/transport/ble
@@ -78,7 +81,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - run: go run ./scripts/crosscompile
 
@@ -89,7 +92,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Install pinned TinyGo
         run: |
@@ -115,7 +118,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
@@ -131,7 +134,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache: true
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
@@ -161,7 +164,150 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
+          cache: true
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: go
+          queries: security-extended
+      - name: Build
+        run: go build ./...
+      - name: Analyze
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          category: /language:go
+ .
+      - name: Test embedded decoder budgets
+        run: go test -count=1 -tags=netchan_small -run TestSmallDecoderRejectsAllocationBeforeReadingElements .
+      - name: Test public TLS boundary
+        env:
+          NETCHAN_NETWORK_TEST: "1"
+        run: >-
+          go test -count=1 .
+          -run '^TestPublic(ListenAndDial|ConfigAndListenerLifecycle|ClientsRemainIndependent|ListenerCloseTerminatesActiveChannel|ListenerCloseInterruptsIncompleteHandshake|TransportSchemes|NearbyDiscovery|NearbySecurityLifetime|EagerSecurityDoesNotBlockAccept)$'
+      - name: Vet packages
+        run: go vet ./...
+
+  compatibility:
+    # Repository rules require this historical status context. The supported
+    # minimum is Go 1.26.10, enforced by go.mod and setup-go below.
+    name: go1.19 compatibility
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up minimum Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - name: Test packages
+        run: go test -count=1 ./...
+
+  macos-native:
+    name: macOS native BLE callbacks
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - name: Exercise native delegate ownership without radio access
+        run: go test -count=1 -run TestAppleDelegateReuse ./pkg/transport/ble
+
+  crosscompile:
+    name: native transport matrix
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - run: go run ./scripts/crosscompile
+
+  tinygo:
+    name: TinyGo compatibility and board matrix
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - name: Install pinned TinyGo
+        run: |
+          curl -fsSL https://github.com/tinygo-org/tinygo/releases/download/v0.43.0/tinygo0.43.0.linux-amd64.tar.gz -o "${RUNNER_TEMP}/tinygo.tar.gz"
+          echo "ca9fc6d055e3889462dea4450a2e42a92242d88b5c362a7ec39bdb563413d78a  ${RUNNER_TEMP}/tinygo.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/tinygo.tar.gz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/tinygo/bin" >> "${GITHUB_PATH}"
+      - name: Static nested channels
+        run: tinygo test -run TestStaticChannelBindings .
+      - name: Interoperate with Go through verified TLS offload
+        run: |
+          tinygo build -tags=netchan_interop -o "${RUNNER_TEMP}/tinygo-interop" ./scripts/crosscompile/interop
+          NETCHAN_TINYGO_TEST_BINARY="${RUNNER_TEMP}/tinygo-interop" go test -count=1 -run TestTinyGoWireInteroperability .
+      - name: Compile SDK and processor capabilities independently
+        run: go run ./scripts/crosscompile -tinygo tinygo
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+      - name: Check reachable vulnerabilities
+        run: govulncheck ./...
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache: true
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+      - name: Scan all rules
+        id: scan
+        continue-on-error: true
+        run: gosec -fmt=sarif -out=gosec.sarif ./...
+      - name: Upload gosec SARIF
+        if: >-
+          always() && hashFiles('gosec.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+      - name: Require clean gosec result
+        if: steps.scan.outcome != 'success'
+        run: exit 1
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
           cache: true
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4

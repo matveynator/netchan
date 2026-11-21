@@ -69,6 +69,49 @@ func testTLSConfigurations(t *testing.T) (*tls.Config, *tls.Config) {
 	return serverTLS, clientTLS
 }
 
+// publishTestRoot uses the same single acceptance owner as Listen while
+// retaining direct in-memory sessions for the test fixtures.
+func publishTestRoot[T any](node *node, accepted chan *Channel[T], capacity int) error {
+	offers := make(chan listenerOffer[T])
+	go forwardListenerLifecycle(node, offers, accepted, make(chan error, 32), make(chan struct{}))
+	return publishRoot(node, offers, capacity)
+}
+
+func TestListenerShutdownWhileAdmissionPending(t *testing.T) {
+	serverNode, _, clientSession, _ := connectedTestSessionsWithLease(t, nil, 0)
+	accepted := make(chan *Channel[int])
+	offers := make(chan listenerOffer[int])
+	reported := make(chan error, 1)
+	finished := make(chan struct{})
+	go forwardListenerLifecycle(serverNode, offers, accepted, reported, finished)
+	if err := publishRoot(serverNode, offers, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := openRoot[int](clientSession, 0); err != nil {
+		t.Fatal(err)
+	}
+	// Nobody receives the pending accepted channel: shutting down the node
+	// must stop admission without racing a send against close(accepted).
+	shutdown := make(chan error, 1)
+	go func() { shutdown <- serverNode.Close() }()
+	select {
+	case <-finished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("listener acceptance owner failed to stop")
+	}
+	select {
+	case err := <-shutdown:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("node close did not finish")
+	}
+	if _, open := <-accepted; open {
+		t.Fatal("listener acceptance channel remained open after shutdown")
+	}
+}
+
 func TestStaticChannelBindings(t *testing.T) {
 	type task struct {
 		Text  string
@@ -77,7 +120,7 @@ func TestStaticChannelBindings(t *testing.T) {
 	}
 	serverNode, _, clientSession, _ := connectedTestSessionsWithLease(t, nil, 0, ChannelElement[string](), ChannelElement[struct{}]())
 	accepted := make(chan *Channel[task], 1)
-	if err := publishRoot(serverNode, accepted, 0); err != nil {
+	if err := publishTestRoot(serverNode, accepted, 0); err != nil {
 		t.Fatal(err)
 	}
 	client, _, err := openRoot[task](clientSession, 0)
@@ -431,7 +474,7 @@ func TestTaskStopSurvivesReconnect(t *testing.T) {
 func TestTaskStopClosesAfterDisconnectedLease(t *testing.T) {
 	serverNode, _, clientSession, _ := connectedTestSessionsWithLease(t, nil, 40*time.Millisecond)
 	accepted := make(chan *Channel[nestedTask], 1)
-	if err := publishRoot(serverNode, accepted, 0); err != nil {
+	if err := publishTestRoot(serverNode, accepted, 0); err != nil {
 		t.Fatal(err)
 	}
 	client, _, err := openRoot[nestedTask](clientSession, 0)
@@ -686,7 +729,7 @@ func TestSequentialTaskCapabilitiesAreReclaimed(t *testing.T) {
 func TestRootSchemaMismatchRejectsOpen(t *testing.T) {
 	serverNode, _, clientSession, _ := connectedTestSessions(t)
 	accepted := make(chan *Channel[int], 1)
-	if err := publishRoot(serverNode, accepted, 0); err != nil {
+	if err := publishTestRoot(serverNode, accepted, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := openRoot[string](clientSession, 0); !errors.Is(err, ErrSchemaMismatch) {
@@ -907,7 +950,7 @@ func TestReconnectReplayIsPacedBeyondPhysicalQueueCapacity(t *testing.T) {
 func TestMalformedRootDirectionDoesNotDeadlockActors(t *testing.T) {
 	serverNode, _, clientSession, _ := connectedTestSessions(t)
 	accepted := make(chan *Channel[int], 1)
-	if err := publishRoot(serverNode, accepted, 0); err != nil {
+	if err := publishTestRoot(serverNode, accepted, 0); err != nil {
 		t.Fatal(err)
 	}
 	identifier, err := randomIdentifier()
@@ -1366,7 +1409,7 @@ func connectedChannels[T any](t *testing.T, clientCapacity, serverCapacity int) 
 	t.Helper()
 	serverNode, _, clientSession, serverSession := connectedTestSessions(t)
 	accepted := make(chan *Channel[T], 1)
-	if err := publishRoot(serverNode, accepted, serverCapacity); err != nil {
+	if err := publishTestRoot(serverNode, accepted, serverCapacity); err != nil {
 		t.Fatal(err)
 	}
 	clientChannel, _, err := openRoot[T](clientSession, clientCapacity)
@@ -1387,7 +1430,7 @@ func connectedObservedChannels[T any](t *testing.T, clientCapacity, serverCapaci
 	observed := make(chan observedNetworkFrame, 256)
 	serverNode, _, clientSession, _ := connectedTestSessionsWithObservation(t, observed)
 	accepted := make(chan *Channel[T], 1)
-	if err := publishRoot(serverNode, accepted, serverCapacity); err != nil {
+	if err := publishTestRoot(serverNode, accepted, serverCapacity); err != nil {
 		t.Fatal(err)
 	}
 	clientChannel, _, err := openRoot[T](clientSession, clientCapacity)
