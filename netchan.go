@@ -1001,7 +1001,8 @@ func Listen[T any](address string, configurations ...Config) (*Listener[T], erro
 		return nil, err
 	}
 	accepted := make(chan *Channel[T])
-	if err := publishRoot(node, accepted, configuration.Capacity); err != nil {
+	offers := make(chan listenerOffer[T])
+	if err := publishRoot(node, offers, configuration.Capacity); err != nil {
 		_ = node.Close()
 		return nil, err
 	}
@@ -1013,7 +1014,7 @@ func Listen[T any](address string, configurations ...Config) (*Listener[T], erro
 	errorsChannel := make(chan error, 32)
 	done := make(chan struct{})
 	listener := &Listener[T]{Channels: accepted, Errors: errorsChannel, Done: done, Address: networkListener.Addr().String(), node: node}
-	go forwardListenerLifecycle(node, accepted, errorsChannel, done)
+	go forwardListenerLifecycle(node, offers, accepted, errorsChannel, done)
 	return listener, nil
 }
 
@@ -1085,12 +1086,35 @@ func unusedTLSConfiguration() *tls.Config {
 	return &tls.Config{MinVersion: tls.VersionTLS13}
 }
 
-func forwardListenerLifecycle[T any](node *node, accepted chan *Channel[T], reported chan error, done chan struct{}) {
-	defer close(accepted)
-	defer close(reported)
+// listenerOffer transfers one pending acceptance to the listener owner.
+// Only forwardListenerLifecycle may send to or close the public Channels
+ // channel; session workers never race its close.
+type listenerOffer[T any] struct {
+	channel     *Channel[T]
+	sessionDone <-chan struct{}
+	reply       chan<- bool
+}
+
+func forwardListenerLifecycle[T any](node *node, offers <-chan listenerOffer[T], accepted chan *Channel[T], reported chan error, done chan struct{}) {
 	defer close(done)
+	defer close(reported)
+	defer close(accepted)
 	for {
 		select {
+		case offer := <-offers:
+			delivered := false
+			select {
+			case accepted <- offer.channel:
+				delivered = true
+			case <-offer.sessionDone:
+			case <-node.done:
+				return
+			}
+			select {
+			case offer.reply <- delivered:
+			case <-node.done:
+				return
+			}
 		case err := <-node.errors:
 			select {
 			case reported <- err:
@@ -3214,7 +3238,7 @@ type preparedOutboundFrame struct {
 	reservedBytes uint64
 }
 
-func publishRoot[T any](node *node, accepted chan<- *Channel[T], capacity int) error {
+func publishRoot[T any](node *node, offers chan<- listenerOffer[T], capacity int) error {
 	elementType := reflect.TypeOf((*T)(nil)).Elem()
 	if err := validateNetworkType(elementType); err != nil {
 		return err
@@ -3230,7 +3254,7 @@ func publishRoot[T any](node *node, accepted chan<- *Channel[T], capacity int) e
 				channel.abortSession = session.abort
 				bridgeDone := startRootChannelBridge(session, identifier, channel, incoming)
 				go func() {
-					if !offerAcceptedChannel(accepted, channel, session.done, node.done) {
+					if !offerAcceptedChannel(offers, channel, session.done, node.done) {
 						_ = session.Close()
 						return
 					}
@@ -3258,15 +3282,18 @@ func publishRoot[T any](node *node, accepted chan<- *Channel[T], capacity int) e
 	}
 }
 
-func offerAcceptedChannel[T any](accepted chan<- *Channel[T], channel *Channel[T], sessionDone, nodeDone <-chan struct{}) (offered bool) {
-	defer func() {
-		if recover() != nil {
-			offered = false
-		}
-	}()
+func offerAcceptedChannel[T any](offers chan<- listenerOffer[T], channel *Channel[T], sessionDone, nodeDone <-chan struct{}) bool {
+	reply := make(chan bool, 1)
 	select {
-	case accepted <- channel:
-		return true
+	case offers <- listenerOffer[T]{channel: channel, sessionDone: sessionDone, reply: reply}:
+	case <-sessionDone:
+		return false
+	case <-nodeDone:
+		return false
+	}
+	select {
+	case accepted := <-reply:
+		return accepted
 	case <-sessionDone:
 		return false
 	case <-nodeDone:
